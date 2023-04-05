@@ -17,6 +17,8 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
+extern struct list sleep_list;
+
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
@@ -92,8 +94,8 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  if (timer_elapsed (start) < ticks) 
+    thread_sleep(start + ticks);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +174,25 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  /* Wake up the sleeping thread. Put them to ready list */
+  ASSERT (intr_get_level () == INTR_OFF);
+  int64_t now_time = timer_ticks();
+  struct list_elem *e = list_begin(&sleep_list);
+  while(e != list_end(&sleep_list)) 
+  {
+    int64_t e_time = list_entry(e, struct thread, elem)-> time_to_wake_up;
+    if(now_time >= e_time)
+    {
+      struct list_elem *next_e = list_remove(e);
+      thread_unblock(list_entry(e, struct thread, elem));
+      e = next_e;
+    }
+    else
+    {
+      break;
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

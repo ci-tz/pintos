@@ -28,6 +28,11 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* referenced by devices/timer.c When thread call timer_sleep,
+   put the thread into the sleep_list  */
+struct list sleep_list;
+
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -68,6 +73,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
+static bool cmp_time_wakeup(const struct list_elem *, const struct list_elem *, void *aus UNUSED);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
@@ -92,6 +98,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -313,6 +320,20 @@ thread_yield (void)
   schedule ();
   intr_set_level (old_level);
 }
+
+/* Change the state of the caller thread to ‘blocked’ and put it 
+   to the sleep queue. */
+void 
+thread_sleep(int64_t ticks) 
+{
+  struct thread *cur = thread_current();
+  enum intr_level old_level = intr_disable();
+  cur->time_to_wake_up = ticks;
+  list_insert_ordered(&sleep_list, &cur->elem, cmp_time_wakeup, NULL);
+  thread_block();
+  intr_set_level(old_level);
+}
+
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -564,6 +585,18 @@ schedule (void)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
 }
+
+/* Helper function used to keep thread's order in the sleep_list 
+   accoding to the time_to_wake_up in descending order */
+static bool 
+cmp_time_wakeup(const struct list_elem *a,
+                    const struct list_elem *b,
+                    void *aus UNUSED)
+{
+  struct thread* th_a=list_entry(a,struct thread,elem);
+  struct thread* th_b=list_entry(b,struct thread,elem);
+  return th_a->time_to_wake_up<th_b->time_to_wake_up;
+}   
 
 /* Returns a tid to use for a new thread. */
 static tid_t
