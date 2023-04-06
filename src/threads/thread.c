@@ -74,7 +74,6 @@ static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 static bool cmp_time_wakeup(const struct list_elem *, const struct list_elem *, void *aus UNUSED);
-static bool cmp_priority(const struct list_elem *, const struct list_elem *, void *aux UNUSED);
 
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
