@@ -331,13 +331,16 @@ thread_yield (void)
 
 /* Change the state of the caller thread to ‘blocked’ and put it 
    to the sleep queue. */
-void 
-thread_sleep(int64_t ticks) 
+void thread_sleep(int64_t ticks)
 {
   struct thread *cur = thread_current();
-  enum intr_level old_level = intr_disable();
+  enum intr_level old_level;
+
+  ASSERT(!intr_context());
+
+  old_level = intr_disable();
   cur->time_to_wake_up = ticks;
-  list_insert_ordered(&sleep_list, &cur->elem, cmp_time_wakeup, NULL);
+  list_insert_ordered(&sleep_list, &cur->elem, cmp_priority, NULL);
   thread_block();
   intr_set_level(old_level);
 }
