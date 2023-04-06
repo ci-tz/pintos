@@ -178,15 +178,15 @@ timer_interrupt (struct intr_frame *args UNUSED)
   /* Wake up the sleeping thread. Put them to ready list */
   ASSERT (intr_get_level () == INTR_OFF);
   int64_t now_time = timer_ticks();
-  struct list_elem *e = list_begin(&sleep_list);
-  while(e != list_end(&sleep_list)) 
+  struct list_elem *e;
+  for (e = list_begin(&sleep_list); e != list_end(&sleep_list); ) 
   {
-    int64_t e_time = list_entry(e, struct thread, elem)-> time_to_wake_up;
+    struct thread *t = list_entry(e, struct thread, elem);
+    int64_t e_time = t->time_to_wake_up;
     if(now_time >= e_time)
     {
-      struct list_elem *next_e = list_remove(e);
-      thread_unblock(list_entry(e, struct thread, elem));
-      e = next_e;
+      e = list_remove(e);
+      thread_unblock(t);
     }
     else
     {
