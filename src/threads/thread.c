@@ -74,6 +74,8 @@ static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 static bool cmp_time_wakeup(const struct list_elem *, const struct list_elem *, void *aus UNUSED);
+static bool cmp_priority(const struct list_elem *, const struct list_elem *, void *aux UNUSED);
+
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
@@ -208,6 +210,13 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* When inserting a thread to ready_list , 
+     compare the priority with the currently running thread.
+     If the newly arriving thread has higher priority, 
+     preempt the currently running thread and execute the new one.  */
+  if (t->priority > thread_current()->priority)
+    thread_yield();
+
   return tid;
 }
 
@@ -244,7 +253,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -315,7 +324,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, cmp_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -352,11 +361,15 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY.
+  If NEW_PRIORITY is lower than the highest priority in the ready_list, 
+  current thread need to yield CPU    */
 void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  if (!list_empty(&ready_list) && new_priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -597,6 +610,17 @@ cmp_time_wakeup(const struct list_elem *a,
   struct thread* th_b=list_entry(b,struct thread,elem);
   return th_a->time_to_wake_up<th_b->time_to_wake_up;
 }   
+
+/* Helper function for list_insert_ordered().
+   If the priority of thread A is greater than thread B, return true. */
+bool cmp_priority(const struct list_elem *a,
+                         const struct list_elem *b,
+                         void *aux UNUSED)
+{
+  struct thread *th_a = list_entry(a, struct thread, elem);
+  struct thread *th_b = list_entry(b, struct thread, elem);
+  return th_a->priority > th_b->priority;
+}
 
 /* Returns a tid to use for a new thread. */
 static tid_t

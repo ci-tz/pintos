@@ -128,6 +128,8 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 void thread_sleep(int64_t);
 
+bool cmp_priority(const struct list_elem *, const struct list_elem *, void *aux UNUSED);
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
