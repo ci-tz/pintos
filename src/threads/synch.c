@@ -205,8 +205,29 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  // If the lock is already held by some other thread, then donate priority
+  if(lock->holder) 
+  {
+    struct thread *t = thread_current ();
+    struct thread *lock_holder = lock->holder;
+    t->waiting_lock = lock;
+    //Donating priority to the lock holder in nested fashion
+    while(lock_holder != NULL && t->priority > lock_holder->priority)
+    {
+      lock_holder->priority = t->priority;
+      if(lock_holder->waiting_lock != NULL)
+      {
+        lock_holder = lock_holder->waiting_lock->holder;
+      }
+      else
+      {
+        lock_holder = NULL;
+      }
+    }
+  }
+   sema_down (&lock->semaphore);
+   lock->holder = thread_current ();
+   list_push_back(&thread_current()->locks_holding, &lock->elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -239,6 +260,41 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  struct thread* curr = thread_current();
+  // If the lock is released, then remove it from the list of locks held by the thread
+  list_remove(&lock->elem);
+  // If the lock is released, then remove the donation from the lock holder
+  int max_priority = PRI_MIN;
+  if(!list_empty(&curr->locks_holding))
+  {
+    struct list_elem *e;
+    struct lock *l;
+    for(e = list_begin(&curr->locks_holding); 
+          e != list_end(&curr->locks_holding); 
+          e = list_next(e))
+    {
+      l = list_entry(e, struct lock, elem);
+      if(!list_empty(&l->semaphore.waiters))
+      {
+        int lock_max_priority =  list_entry(list_min(&l->semaphore.waiters, cmp_priority, NULL), struct thread, elem)->priority;
+        if(lock_max_priority > max_priority)
+        {
+          max_priority = lock_max_priority;
+        }
+      }
+    }
+  }
+  if(max_priority > curr->original_priority)
+  {
+    curr->priority = max_priority;
+  }
+  else
+  {
+    curr->priority = curr->original_priority;
+  }
+  // update the priority of the lock holder
+  
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
