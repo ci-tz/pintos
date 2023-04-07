@@ -193,6 +193,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
+  // Check the current thread's priority, 
+  // if it is lower than the highest priority in ready list, 
+  // yield the CPU
+  yield_if_higher_priority_in_timer();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
