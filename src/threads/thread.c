@@ -104,7 +104,7 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleep_list);
-
+  load_avg = 0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -390,7 +390,9 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current ()->nice = nice;
+  update_thread_priority(thread_current(), NULL);
+  yield_if_higher_priority();
 }
 
 /* Returns the current thread's nice value. */
@@ -530,15 +532,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
-  t->original_priority = priority;
-  t->waiting_lock = NULL;
-  list_init(&t->locks_holding);
-  t->magic = THREAD_MAGIC;
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;
+  #else
+  t->priority = priority;
+  t->original_priority = priority;
   #endif
+  t->waiting_lock = NULL;
+  list_init(&t->locks_holding);
+  t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
