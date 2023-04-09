@@ -34,6 +34,8 @@
 
 void multiple_donate(struct thread* t);
 
+extern bool thread_mlfqs;
+
 static bool cmp_sema_priority (const struct list_elem *a, 
                                const struct list_elem *b, void *aux UNUSED);
 
@@ -215,6 +217,10 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  #if thread_mlfqs
+  sema_down (&lock->semaphore);
+  lock->holder = thread_current ();
+  #else
   struct thread* curr = thread_current();
   if(lock->holder) 
   {
@@ -238,6 +244,7 @@ lock_acquire (struct lock *lock)
    list_push_back(&thread_current()->locks_holding, &lock->elem);
    //Update current thread's priority
    multiple_donate(curr);
+  #endif
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -270,10 +277,12 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+  #if !thread_mlfqs
   //Remove this lock from current thread's `locks_holding` list.
   list_remove(&lock->elem);
   //Update current thread's priority.
   multiple_donate(thread_current());
+  #endif
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

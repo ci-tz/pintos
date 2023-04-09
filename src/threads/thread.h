@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "fixed_point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -93,6 +94,12 @@ struct thread
     int64_t time_to_wake_up;            /* The time when to wake up the thread. */
     struct lock *waiting_lock;          /* The lock that the thread is waiting for. */
     struct list locks_holding;          /* The list of locks that the thread is holding. */
+
+    #if thread_mlfqs
+    int nice;                           /* The nice value of the thread. */
+    fixed_point_t recent_cpu;           /* The recent_cpu value of the thread. */
+    #endif
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -108,7 +115,7 @@ struct thread
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
-extern bool thread_mlfqs;
+bool thread_mlfqs;
 
 void thread_init (void);
 void thread_start (void);
@@ -144,5 +151,9 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void update_all_priority(void);
+void update_all_recent_cpu(void);
+void update_load_avg(void);
+void increment_recent_cpu(void);
 
 #endif /* threads/thread.h */
