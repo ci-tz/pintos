@@ -94,11 +94,8 @@ struct thread
     int64_t time_to_wake_up;            /* The time when to wake up the thread. */
     struct lock *waiting_lock;          /* The lock that the thread is waiting for. */
     struct list locks_holding;          /* The list of locks that the thread is holding. */
-
-    #if thread_mlfqs
     int nice;                           /* The nice value of the thread. */
     fixed_point_t recent_cpu;           /* The recent_cpu value of the thread. */
-    #endif
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -115,7 +112,7 @@ struct thread
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
-bool thread_mlfqs;
+extern bool thread_mlfqs;
 
 void thread_init (void);
 void thread_start (void);

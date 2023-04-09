@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -60,6 +61,11 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
+
+/* If false (default), use round-robin scheduler.
+   If true, use multi-level feedback queue scheduler.
+   Controlled by kernel command-line option "-o mlfqs". */
+bool thread_mlfqs;
 
 /* 4.4 BSD Scheduler */
 static fixed_point_t load_avg;
@@ -406,7 +412,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  return fixed_point_to_int_round_to_zero(multi_fi(load_avg, 100));
+  return f2i_zero(multi_fi(load_avg, 100));
 }
 
 /* Update all thread's priority */
@@ -444,7 +450,7 @@ void increment_recent_cpu(void)
 int
 thread_get_recent_cpu (void) 
 {
-  return fixed_point_to_int_round_to_zero(multiply_fixed_point_integer(thread_current()->recent_cpu, 100));
+  return f2i_zero(multi_fi(thread_current()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -532,16 +538,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  #if thread_mlfqs
-  t->nice = 0;
-  t->recent_cpu = 0;
-  #else
   t->priority = priority;
   t->original_priority = priority;
-  #endif
   t->waiting_lock = NULL;
   list_init(&t->locks_holding);
   t->magic = THREAD_MAGIC;
+  #if thread_mlfqs
+  t->nice = 0;
+  t->recent_cpu = 0;
+  #endif
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -695,8 +700,8 @@ static void update_thread_priority(struct thread *t, void *aux UNUSED)
   if (t == idle_thread)
     return;
   fixed_point_t recent_cpu = t->recent_cpu;
-  fixed_point_t nice = i2f(t->nice);
-  fixed_point_t priority = i2f(PRI_MAX) - div_fi(recent_cpu, 4) - multi_fi(nice, 2);
+  int nice = t->nice;
+  fixed_point_t priority = i2f(PRI_MAX) - (recent_cpu / 4) - i2f(nice * 2);
   t->priority = f2i_zero(priority);
   if (t->priority > PRI_MAX)
     t->priority = PRI_MAX;
@@ -709,7 +714,7 @@ static void update_thread_recent_cpu(struct thread *t, void *aux UNUSED)
 {
   if (t == idle_thread)
     return;
-  fixed_point_t decay = div_ff(multi_fi(load_avg, 2), add_fi(multi_fi(load_avg, 2), 1));
+  fixed_point_t decay = div_ff((load_avg * 2), add_fi((load_avg * 2), 1));
   t->recent_cpu = add_fi(multi_ff(decay, t->recent_cpu), t->nice);
 }
 
