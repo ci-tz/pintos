@@ -20,6 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void argument_stack(char* parse[], int count, void** esp_ptr);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -38,8 +39,12 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Parse command line and get program name */
+  char* token, *save_ptr;
+  token = strtok_r ((char*)file_name, " ", &save_ptr);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -54,18 +59,27 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  /* Parse file name and arguments */
+  char *token, *save_ptr;
+  char* parse[MAXARGC];
+  int count = 0;
+  for(token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+    parse[count++] = token;
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (parse[0], &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
 
+  argument_stack(parse, count, &if_.esp);
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //DEBUG
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -462,4 +476,46 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+/* Add argument passing support for process_execute(). */
+static void argument_stack(char* parse[], int count, void** esp_ptr)
+{
+  char* esp = *esp_ptr;
+  for(int i = count - 1; i >= 0; i--)
+  {
+    int len = strlen(parse[i]) + 1;
+    esp -= len;
+    memcpy(esp, parse[i], len);
+    parse[i] = esp;
+  }
+  /* Word align by 4B. */
+  while((int)esp % 4 != 0)
+  {
+    esp--;
+    *esp = 0;
+  }
+  /* Push null pointer sentinel. */
+  esp -= 4;
+  *(char**)esp = 0;
+  /* Push start address of the character strings. */
+  for(int i = count - 1; i >= 0; i--)
+  {
+    esp -= 4;
+    *(char**)esp = parse[i];
+  }
+  /* Push argv. */
+  char** argv = esp;
+  esp -= 4;
+  *(char***)esp = argv;
+
+  /* Push argc. */
+  esp -= 4;
+  *(int*)esp = count;
+
+  /* Push fake return address. */
+  esp -= 4;
+  *(int*)esp = 0;
+
+  *esp_ptr = esp;
 }
