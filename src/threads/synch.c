@@ -128,16 +128,23 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+  struct thread *wake_up = NULL;
   if (!list_empty (&sema->waiters)) 
   {
     list_sort (&sema->waiters, (list_less_func *) &cmp_priority, NULL);
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+    wake_up = list_entry(list_pop_front(&sema->waiters), struct thread, elem);
+    thread_unblock(wake_up);
   }
   sema->value++;
   intr_set_level (old_level);
   // In case the unblocked thread has higher priority than the current thread
-  thread_yield ();
+  if(wake_up != NULL && wake_up->priority > thread_current()->priority)
+  {
+    if (!intr_context())
+      thread_yield();
+    else
+      intr_yield_on_return();
+  }
 }
 
 static void sema_test_helper (void *sema_);

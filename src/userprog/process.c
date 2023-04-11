@@ -20,7 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void argument_stack(char* parse[], int count, void** esp_ptr);
+static void argument_stack(char** parse, int count, void** esp_ptr);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -29,24 +29,29 @@ static void argument_stack(char* parse[], int count, void** esp_ptr);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy_1, *fn_copy_2;
+  char *token, *save_ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  fn_copy_1 = palloc_get_page(0);
+  fn_copy_2 = palloc_get_page(0);
+  if (fn_copy_1 == NULL || fn_copy_2 == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy(fn_copy_1, file_name, PGSIZE);
+  strlcpy(fn_copy_2, file_name, PGSIZE);
 
   /* Parse command line and get program name */
-  char* token, *save_ptr;
-  token = strtok_r ((char*)file_name, " ", &save_ptr);
+  token = strtok_r((char *)fn_copy_1, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy_2);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+    palloc_free_page (fn_copy_1);
+    //fn_copy_2 is freed in start_process
+  }
   return tid;
 }
 
@@ -58,6 +63,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+
 
   /* Parse file name and arguments */
   char *token, *save_ptr;
@@ -74,11 +80,15 @@ start_process (void *file_name_)
   success = load (parse[0], &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  if (!success)
+  {
+    palloc_free_page (file_name);
     thread_exit ();
+  }
 
   argument_stack(parse, count, &if_.esp);
+  /* palloc_free_page() must be called after argument_stack() */
+  palloc_free_page (file_name);
   hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //DEBUG
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
