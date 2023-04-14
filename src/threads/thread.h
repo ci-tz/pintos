@@ -96,6 +96,7 @@ struct thread
     struct list locks_holding;          /* The list of locks that the thread is holding. */
     int nice;                           /* The nice value of the thread. */
     fixed_point_t recent_cpu;           /* The recent_cpu value of the thread. */
+    int exit_status;                    /* The exit status of the thread. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

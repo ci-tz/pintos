@@ -543,6 +543,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->waiting_lock = NULL;
   list_init(&t->locks_holding);
   t->magic = THREAD_MAGIC;
+  t->time_to_wake_up = 0;
+  t->exit_status = 0;
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;
