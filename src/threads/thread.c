@@ -192,6 +192,8 @@ thread_create (const char *name, int priority,
 
   ASSERT (function != NULL);
 
+  struct thread* curr = thread_current();
+
   /* Allocate thread. */
   t = palloc_get_page (PAL_ZERO);
   if (t == NULL)
@@ -200,7 +202,9 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
+  t->parent = curr;
+  list_push_back(&curr->child_list, &t->child_elem);
+  
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -544,7 +548,9 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->locks_holding);
   t->magic = THREAD_MAGIC;
   t->time_to_wake_up = 0;
-  t->exit_status = 0;
+  t->exit_status = -1;
+  t->parent = NULL;
+  list_init(&t->children);
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;

@@ -97,7 +97,9 @@ struct thread
     int nice;                           /* The nice value of the thread. */
     fixed_point_t recent_cpu;           /* The recent_cpu value of the thread. */
     int exit_status;                    /* The exit status of the thread. */
-
+    struct thread* parent;              /* The parent thread of the thread. */
+    struct list child_list;             /* The list of children threads of the thread. */
+    struct list_elem child_elem;        /* The list element of the child list. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
