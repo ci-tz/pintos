@@ -26,6 +26,8 @@ static void check_addr_buf(void *ptr, unsigned size);
 /* System call functions. */
 static void halt(void);
 static void exit(int status);
+static int wait(int pid);
+static int write(int fd, const void *buffer, unsigned size);
 
 void
 syscall_init (void) 
@@ -50,7 +52,19 @@ syscall_handler (struct intr_frame *f UNUSED)
       check_addr_buf(user_esp + 4, 4);
       exit(*((int *)(user_esp + 4)));
       break;
+    case SYS_WAIT:
+      check_addr_buf(user_esp + 4, 4);
+      f->eax = wait(*((int *)(user_esp + 4)));
+      break;
+    case SYS_WRITE:
+      check_addr_buf(user_esp + 4, 4);
+      check_addr_buf(user_esp + 8, 4);
+      check_addr_buf(user_esp + 12, 4);
+      check_addr_buf(user_esp + 16, 4);
+      f->eax = write(*((int *)(user_esp + 4)), *((void **)(user_esp + 8)), *((unsigned *)(user_esp + 12)));
+      break;
     default:
+      exit(-1);
       break;
   }
 
@@ -123,8 +137,29 @@ static void halt(void)
 static void exit(int status)
 {
   thread_current()->exit_status = status;
-  printf("%s: exit(%d)", thread_current()->name, status);
+  printf("%s: exit(%d)\n", thread_current()->name, status);
   thread_exit();
+  printf("after thread_exit() in exit(),%s\n", thread_current()->name);
+}
+
+/* Wait for termination of child process whose process id is pid. If the child process has already terminated, 
+   return immediately. Otherwise, wait until the child process terminates and then return its exit status. */
+static int wait(int pid)
+{
+  return process_wait(pid);
+}
+
+/* Write size bytes from buffer to the open file fd. Returns the number of bytes actually written, 
+   which may be less than size if some bytes could not be written. */
+static int write(int fd, const void *buffer, unsigned size)
+{
+  if (fd == 1)
+  {
+    putbuf(buffer, size);
+    return size;
+  }
+  else
+    return -1;
 }
 
 

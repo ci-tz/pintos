@@ -47,6 +47,7 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy_2);
+  printf("----------tid: %d\n", tid);
   if (tid == TID_ERROR)
   {
     palloc_free_page (fn_copy_1);
@@ -89,7 +90,7 @@ start_process (void *file_name_)
   argument_stack(parse, count, &if_.esp);
   /* palloc_free_page() must be called after argument_stack() */
   palloc_free_page (file_name);
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //DEBUG
+  //hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //DEBUG
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -105,14 +106,50 @@ start_process (void *file_name_)
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
-   immediately, without waiting.
-
-   This function will be implemented in problem 2-2.  For now, it
-   does nothing. */
+   immediately, without waiting. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  printf("--------------process_wait(%d)\n", child_tid);
+  //Search the descriptor of the child process by using child_tid.
+  struct list_elem *e;
+  struct thread *cur = thread_current();
+  struct thread *cp = NULL;
+  //protect child_list
+  for(e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e))
+  {
+    cp = list_entry(e, struct thread, child_elem);
+    printf("process name: %s, tid: %d\n", cp->name, cp->tid);
+    if(cp->tid == child_tid)
+      break;
+  }
+  //If there is no child process with child_tid, or the child process is already waited, return -1.
+  if(e == list_end(&cur->child_list))
+    return -1;
+  //If the child process is not terminated, wait for the child process.
+  if(cp->status != THREAD_DYING)
+  {
+    printf("-------------process_wait(%d) : sema_down\n", child_tid);
+    sema_down(&cp->wait_sema);
+  }
+
+  //Debug: traverse child_list
+  printf("cp->name: %s, cp->tid: %d\n", cp->name, cp->tid);
+  printf("-------------process_wait(%d) : traverse child_list\n", child_tid);
+  for(e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e))
+  {
+    cp = list_entry(e, struct thread, child_elem);
+    printf("process name: %s, tid: %d\n", cp->name, cp->tid);
+  }
+
+  //Remove the child process from the child_list.
+  list_remove(e);
+  //Retrieve the child’s exit status
+  int exit_status = cp->exit_status;
+  //Free the child process's resources.
+  palloc_free_page(cp);
+  //Return the exit status of the child process.
+  return exit_status;
 }
 
 /* Free the current process's resources. */

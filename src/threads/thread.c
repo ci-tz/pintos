@@ -309,6 +309,8 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
+  sema_up(&thread_current()->wait_sema);
+  printf("sema_up(%s)\n", thread_current()->name);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
@@ -550,7 +552,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->time_to_wake_up = 0;
   t->exit_status = -1;
   t->parent = NULL;
-  list_init(&t->children);
+  list_init(&t->child_list);
+  sema_init(&t->wait_sema, 0);
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;

@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "fixed_point.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -100,6 +101,7 @@ struct thread
     struct thread* parent;              /* The parent thread of the thread. */
     struct list child_list;             /* The list of children threads of the thread. */
     struct list_elem child_elem;        /* The list element of the child list. */
+    struct semaphore wait_sema;        /* The semaphore for the child thread. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
