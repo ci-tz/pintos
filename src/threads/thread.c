@@ -308,9 +308,8 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
+  sema_up(&thread_current()->parent->wait_sema);
 #endif
-  sema_up(&thread_current()->wait_sema);
-  printf("sema_up(%s)\n", thread_current()->name);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
@@ -554,6 +553,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->parent = NULL;
   list_init(&t->child_list);
   sema_init(&t->wait_sema, 0);
+  sema_init(&t->load_sema, 0);
+  t->load_success = false;
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;
@@ -630,11 +631,20 @@ thread_schedule_tail (struct thread *prev)
      pull out the rug under itself.  (We don't free
      initial_thread because its memory was not obtained via
      palloc().) */
+#ifndef USERPROG
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
       palloc_free_page (prev);
     }
+#else
+  if (prev != NULL && prev->status == THREAD_DYING 
+        && prev != initial_thread && prev->parent == NULL) 
+    {
+      ASSERT (prev != cur);
+      palloc_free_page (prev);
+    }
+#endif
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and

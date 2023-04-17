@@ -102,6 +102,9 @@ struct thread
     struct list child_list;             /* The list of children threads of the thread. */
     struct list_elem child_elem;        /* The list element of the child list. */
     struct semaphore wait_sema;        /* The semaphore for the child thread. */
+    struct semaphore load_sema;        /* The semaphore for the child thread. */
+    bool load_success;                  /* The load success of the child thread. */
+    
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 

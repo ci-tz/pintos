@@ -10,7 +10,7 @@
 
 
 //User space's stack pointer
-static void *user_esp;
+static uint8_t *user_esp;
 
 static void syscall_handler (struct intr_frame *);
 
@@ -28,6 +28,7 @@ static void halt(void);
 static void exit(int status);
 static int wait(int pid);
 static int write(int fd, const void *buffer, unsigned size);
+static int exec(const char *cmd_line);
 
 void
 syscall_init (void) 
@@ -62,6 +63,11 @@ syscall_handler (struct intr_frame *f UNUSED)
       check_addr_buf(user_esp + 12, 4);
       check_addr_buf(user_esp + 16, 4);
       f->eax = write(*((int *)(user_esp + 4)), *((void **)(user_esp + 8)), *((unsigned *)(user_esp + 12)));
+      break;
+    case SYS_EXEC:
+      check_addr_buf(user_esp + 4, 4);
+      check_addr_str(*((void **)(user_esp + 4)));
+      f->eax = exec(*((char **)(user_esp + 4)));
       break;
     default:
       exit(-1);
@@ -139,7 +145,6 @@ static void exit(int status)
   thread_current()->exit_status = status;
   printf("%s: exit(%d)\n", thread_current()->name, status);
   thread_exit();
-  printf("after thread_exit() in exit(),%s\n", thread_current()->name);
 }
 
 /* Wait for termination of child process whose process id is pid. If the child process has already terminated, 
@@ -160,6 +165,15 @@ static int write(int fd, const void *buffer, unsigned size)
   }
   else
     return -1;
+}
+
+/* Runs the executable whose name is given in cmd_line, passing any given arguments, and returns the new process's program id (pid). 
+   Must return pid -1, which otherwise should not be a valid pid, if the program cannot load or run for any reason. 
+   Thus, the parent process cannot return from the exec until it knows whether the child process successfully loaded its executable. 
+   You must use appropriate synchronization to ensure this. */
+static int exec(const char *cmd_line)
+{
+  return process_execute(cmd_line);
 }
 
 
