@@ -12,6 +12,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/fixed_point.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -204,6 +205,7 @@ thread_create (const char *name, int priority,
   tid = t->tid = allocate_tid ();
   t->parent = curr;
   list_push_back(&curr->child_list, &t->child_elem);
+  t->fdt = calloc(MAX_FD, sizeof(struct file*));
   
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -555,6 +557,8 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&t->wait_sema, 0);
   sema_init(&t->load_sema, 0);
   t->load_success = false;
+  t->fdt = NULL;
+  t->next_fd = 2;
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;

@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+extern struct lock filesys_lock;
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void argument_stack(char** parse, int count, void** esp_ptr);
@@ -80,7 +82,9 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  lock_acquire(&filesys_lock);
   success = load (parse[0], &if_.eip, &if_.esp);
+  lock_release(&filesys_lock);
 
   struct thread* cur = thread_current();
   /* If load failed, quit. */
@@ -161,6 +165,11 @@ process_exit (void)
     cp = list_entry(e, struct thread, child_elem);
     cp->parent = NULL;
   }
+
+  //TODO:Close all the files opened by the process.
+
+  //Deallocate the file descriptor table.
+  free(cur->fdt);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

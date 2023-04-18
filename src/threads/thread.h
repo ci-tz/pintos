@@ -16,6 +16,8 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
+#define MAX_FD (64)    /* Maximum number of file descriptors. */
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -101,9 +103,11 @@ struct thread
     struct thread* parent;              /* The parent thread of the thread. */
     struct list child_list;             /* The list of children threads of the thread. */
     struct list_elem child_elem;        /* The list element of the child list. */
-    struct semaphore wait_sema;        /* The semaphore for the child thread. */
-    struct semaphore load_sema;        /* The semaphore for the child thread. */
+    struct semaphore wait_sema;         /* The semaphore for the child thread. */
+    struct semaphore load_sema;         /* The semaphore for the child thread. */
     bool load_success;                  /* The load success of the child thread. */
+    struct file **fdt;                  /* The file descriptor table of the thread. */
+    int next_fd;                        /* The next file descriptor of the thread. */
     
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
