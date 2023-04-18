@@ -94,19 +94,11 @@ start_process (void *file_name_)
     thread_exit ();
   }
   /* Load success */
-  else
-  {
-    cur->parent->load_success = true;
-    sema_up(&cur->parent->load_sema);
-  }
-
-  lock_acquire(&filesys_lock);
-  cur->exec_file = filesys_open(parse[0]);
-  if(cur->exec_file != NULL)
-    file_deny_write(cur->exec_file);
-  lock_release(&filesys_lock);
+  cur->parent->load_success = true;
+  sema_up(&cur->parent->load_sema);
 
 
+  /* Set up stack */
   argument_stack(parse, count, &if_.esp);
   /* palloc_free_page() must be called after argument_stack() */
   palloc_free_page (file_name);

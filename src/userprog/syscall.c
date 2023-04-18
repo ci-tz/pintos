@@ -10,6 +10,7 @@
 #include "threads/synch.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "devices/input.h"
 
 
 //Use global lock to avoid race condition on file
