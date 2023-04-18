@@ -559,6 +559,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->load_success = false;
   t->fdt = NULL;
   t->next_fd = 2;
+  t->exec_file = NULL;
   #if thread_mlfqs
   t->nice = 0;
   t->recent_cpu = 0;

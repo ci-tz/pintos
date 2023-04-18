@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 
 extern struct lock filesys_lock;
+extern void close(int fd);
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -82,9 +83,7 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  lock_acquire(&filesys_lock);
   success = load (parse[0], &if_.eip, &if_.esp);
-  lock_release(&filesys_lock);
 
   struct thread* cur = thread_current();
   /* If load failed, quit. */
@@ -100,6 +99,12 @@ start_process (void *file_name_)
     cur->parent->load_success = true;
     sema_up(&cur->parent->load_sema);
   }
+
+  lock_acquire(&filesys_lock);
+  cur->exec_file = filesys_open(parse[0]);
+  if(cur->exec_file != NULL)
+    file_deny_write(cur->exec_file);
+  lock_release(&filesys_lock);
 
 
   argument_stack(parse, count, &if_.esp);
@@ -170,6 +175,13 @@ process_exit (void)
 
   //Deallocate the file descriptor table.
   free(cur->fdt);
+
+  //When the file finishes execution, call file_allow_write(). 
+  if(cur->exec_file != NULL)
+  {
+    file_allow_write(cur->exec_file);
+    file_close(cur->exec_file);
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -295,13 +307,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire (&filesys_lock);
   file = filesys_open (file_name);
+  lock_release (&filesys_lock);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)

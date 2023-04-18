@@ -42,7 +42,7 @@ static int read(int fd, void *buffer, unsigned size);
 static int write(int fd, const void *buffer, unsigned size);
 static void seek(int fd, unsigned position);
 static unsigned tell(int fd);
-static void close(int fd);
+void close(int fd);
 
 
 void
@@ -256,7 +256,7 @@ static unsigned tell(int fd)
 
 /* Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, 
    as if by calling this function for each one. */
-static void close(int fd)
+void close(int fd)
 {
   struct thread* curr = thread_current();
   struct file *file = curr->fdt[fd];
@@ -267,9 +267,6 @@ static void close(int fd)
   lock_release(&filesys_lock);
   curr->fdt[fd] = NULL;
 }
-
-
-
 
 /* Runs the executable whose name is given in cmd_line, passing any given arguments, and returns the new process's program id (pid). 
    Must return pid -1, which otherwise should not be a valid pid, if the program cannot load or run for any reason. 

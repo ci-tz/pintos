@@ -108,6 +108,7 @@ struct thread
     bool load_success;                  /* The load success of the child thread. */
     struct file **fdt;                  /* The file descriptor table of the thread. */
     int next_fd;                        /* The next file descriptor of the thread. */
+    struct file *exec_file;             /* The executable file of the thread. */
     
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
