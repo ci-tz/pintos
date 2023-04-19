@@ -218,6 +218,8 @@ static int wait(int pid)
    which may be less than size if some bytes could not be written. */
 static int write(int fd, const void *buffer, unsigned size)
 {
+  //Judge if fd is leagal
+
   if (fd == STDOUT_FILENO)
   {
     putbuf(buffer, size);
@@ -225,6 +227,9 @@ static int write(int fd, const void *buffer, unsigned size)
   }
   else
   {
+    //Judge if fd is leagal
+    if (fd < 2 || fd >= MAX_FD)
+      return -1;
     struct file *file = thread_current()->fdt[fd];
     if (file == NULL)
       return -1;
@@ -238,6 +243,9 @@ static int write(int fd, const void *buffer, unsigned size)
 /* Changes the next byte to be read or written in open file fd to position. */
 static void seek(int fd, unsigned position)
 {
+  //Judge if fd is leagal
+  if (fd < 2 || fd >= MAX_FD)
+    return;
   struct thread* curr = thread_current();
   struct file *file = curr->fdt[fd];
   if (file == NULL)
@@ -250,6 +258,9 @@ static void seek(int fd, unsigned position)
 /* Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file. */
 static unsigned tell(int fd)
 {
+  //Judge if fd is leagal
+  if (fd < 2 || fd >= MAX_FD)
+    return -1;
   struct thread* curr = thread_current();
   struct file *file = curr->fdt[fd];
   if (file == NULL)
@@ -264,6 +275,9 @@ static unsigned tell(int fd)
    as if by calling this function for each one. */
 void close(int fd)
 {
+  //Judge if fd is leagal
+  if (fd < 2 || fd >= MAX_FD)
+    return;
   struct thread* curr = thread_current();
   struct file *file = curr->fdt[fd];
   if (file == NULL)
@@ -344,6 +358,9 @@ static int find_next_fd(void)
 /* Returns the size, in bytes, of the file open as fd. */
 static int filesize(int fd)
 {
+  //Judge if fd is leagal
+  if (fd < 2 || fd >= MAX_FD)
+    return -1;
   lock_acquire(&filesys_lock);
   int size = file_length(thread_current()->fdt[fd]);
   lock_release(&filesys_lock);
@@ -363,6 +380,9 @@ static int read(int fd, void *buffer, unsigned size)
   }
   else
   {
+    //Judge if fd is leagal
+    if (fd < 2 || fd >= MAX_FD)
+      return -1;
     struct file *file = thread_current()->fdt[fd];
     if(file == NULL)
       return -1;

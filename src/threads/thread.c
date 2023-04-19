@@ -551,7 +551,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->locks_holding);
   t->magic = THREAD_MAGIC;
   t->time_to_wake_up = 0;
-  t->exit_status = -1;
+  t->exit_status = 0;
   t->parent = NULL;
   list_init(&t->child_list);
   sema_init(&t->wait_sema, 0);

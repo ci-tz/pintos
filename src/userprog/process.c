@@ -17,9 +17,11 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 
 extern struct lock filesys_lock;
 extern void close(int fd);
+extern void exit(int status);
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -91,7 +93,8 @@ start_process (void *file_name_)
   {
     palloc_free_page (file_name);
     sema_up(&cur->parent->load_sema);
-    thread_exit ();
+    printf("load failed\n");
+    exit(-1);
   }
   /* Load success */
   cur->parent->load_success = true;
@@ -174,6 +177,14 @@ process_exit (void)
   }
 
   //TODO:Close all the files opened by the process.
+  for(int i = 2; i< MAX_FD; i++)
+  {
+    if(cur->fdt[i] != NULL)
+    {
+      file_close(cur->fdt[i]);
+      cur->fdt[i] = NULL;
+    }
+  }
 
   //Deallocate the file descriptor table.
   free(cur->fdt);
@@ -391,7 +402,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack (esp))
+  {
+    printf("setup_stack failed\n");
     goto done;
+  }
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
