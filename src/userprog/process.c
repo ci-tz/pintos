@@ -97,6 +97,16 @@ start_process (void *file_name_)
   cur->parent->load_success = true;
   sema_up(&cur->parent->load_sema);
 
+  lock_acquire(&filesys_lock);
+  struct file* file = filesys_open(parse[0]);
+  if(file != NULL)
+  {
+    cur->exec_file = file;
+    file_deny_write(file);
+  }
+  lock_release(&filesys_lock);
+
+
 
   /* Set up stack */
   argument_stack(parse, count, &if_.esp);

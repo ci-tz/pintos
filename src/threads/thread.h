@@ -16,7 +16,7 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
-#define MAX_FD (64)    /* Maximum number of file descriptors. */
+#define MAX_FD (128)    /* Maximum number of file descriptors. */
 
 /* Thread identifier type.
    You can redefine this to whatever type you like. */

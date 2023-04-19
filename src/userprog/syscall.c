@@ -30,6 +30,8 @@ static bool addr_valid_buf(void *ptr, unsigned size);
 static void check_addr_str(void *ptr);
 static void check_addr_buf(void *ptr, unsigned size);
 
+static int find_next_fd(void);
+
 /* System call functions. */
 static void halt(void);
 void exit(int status);
@@ -118,19 +120,20 @@ syscall_handler (struct intr_frame *f UNUSED)
       check_addr_buf(user_esp + 4, 4);
       check_addr_buf(user_esp + 8, 4);
       seek(*((int *)(user_esp + 4)), *((unsigned *)(user_esp + 8)));
+      break;
     case SYS_TELL:
       check_addr_buf(user_esp + 4, 4);
       f->eax = tell(*((int *)(user_esp + 4)));
+      break;
     case SYS_CLOSE:
       check_addr_buf(user_esp + 4, 4);
       close(*((int *)(user_esp + 4)));
       break;
     default:
+      printf("Invalid system call number: %d\n", syscall_num);
       exit(-1);
       break;
   }
-  // printf ("system call!\n");
-  // thread_exit ();
 }
 
 /* Helper function, verify the validity of a user-provided pointer. */
@@ -172,7 +175,10 @@ static bool addr_valid_buf(void *ptr, unsigned size)
 static void check_addr_str(void *ptr)
 {
   if (!addr_valid_str(ptr))
+  {
+    printf("Invalid string pointer: %p\n", ptr);
     exit(-1);
+  }
 }
 
 /* Verify and terminate the process if the user-provided buffer is invalid. */
@@ -180,7 +186,7 @@ static void check_addr_buf(void *ptr, unsigned size)
 {
   if (!addr_valid_buf(ptr, size))
   {
-    //printf("invalid buffer %p, size %d\n", ptr, size);
+    printf("Invalid buffer pointer: %p\n", ptr);
     exit(-1);
   }
 }
@@ -219,8 +225,7 @@ static int write(int fd, const void *buffer, unsigned size)
   }
   else
   {
-    struct thread* curr = thread_current();
-    struct file *file = curr->fdt[fd];
+    struct file *file = thread_current()->fdt[fd];
     if (file == NULL)
       return -1;
     lock_acquire(&filesys_lock);
@@ -311,15 +316,29 @@ static int open(const char *file)
   else
   {
     struct thread* curr = thread_current();
-    curr->fdt[curr->next_fd] = f;
-    curr->next_fd++;
-    if(curr->next_fd == MAX_FD)
+    if(curr->next_fd == -1)
     {
-      printf("Too many files open\n");
-      exit(-1);
+      printf("ERROR: File descriptor table is full.\n");
+      return -1;
     }
-    return curr->next_fd - 1;
+    curr->fdt[curr->next_fd] = f;
+    int fd = curr->next_fd;
+    curr->next_fd = find_next_fd();
+    return fd;
   }
+}
+
+/* Helper function to find the next available file descriptor. */
+static int find_next_fd(void)
+{
+  struct thread* curr = thread_current();
+  int i;
+  for (i = 2; i < MAX_FD; i++)
+  {
+    if (curr->fdt[i] == NULL)
+      return i;
+  }
+  return -1;
 }
 
 /* Returns the size, in bytes, of the file open as fd. */
