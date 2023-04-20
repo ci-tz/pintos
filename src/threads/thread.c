@@ -184,9 +184,9 @@ thread_create (const char *name, int priority,
 
   struct thread* curr = thread_current();
 
-  /* Allocate thread. */
+  /* Allocate thread. */     
   t = palloc_get_page (PAL_ZERO);
-  if (t == NULL)
+  if (t == NULL) 
     return TID_ERROR;
 
   /* Initialize thread. */
@@ -198,7 +198,7 @@ thread_create (const char *name, int priority,
   t->process_info = calloc(1, sizeof(struct process_info));
   t->process_info->tid = tid;
   t->process_info->curr_thread = t;
-  t->process_info->parent = curr->process_info;
+  t->process_info->parent_thread = curr;
   t->process_info->exit_status = -1;
   sema_init(&t->process_info->wait_sema, 0);
   sema_init(&t->process_info->load_sema, 0);
@@ -508,6 +508,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->fdt = NULL;
   t->next_fd = 2;
   t->exec_file = NULL;
+  t->process_info = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -580,20 +581,11 @@ thread_schedule_tail (struct thread *prev)
      pull out the rug under itself.  (We don't free
      initial_thread because its memory was not obtained via
      palloc().) */
-#ifndef USERPROG
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
       palloc_free_page (prev);
     }
-#else
-  if (prev != NULL && prev->status == THREAD_DYING 
-        && prev != initial_thread && prev->parent == NULL) 
-    {
-      ASSERT (prev != cur);
-      palloc_free_page (prev);
-    }
-#endif
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and

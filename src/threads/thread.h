@@ -32,7 +32,7 @@ struct process_info
   {
     tid_t tid;                          /* Thread identifier. */
     struct thread* curr_thread;         /* The thread of the process. */
-    struct process_info* parent;        /* The parent process of the process. */
+    struct thread* parent_thread;       /* The parent thread of the thread. */
     int exit_status;                    /* The exit status of the thread. */
     struct semaphore wait_sema;         /* The semaphore for the child thread. */
     struct semaphore load_sema;         /* The semaphore for the child thread. */
