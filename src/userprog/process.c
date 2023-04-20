@@ -176,13 +176,12 @@ process_exit (void)
     cp->parent = NULL;
   }
 
-  //TODO:Close all the files opened by the process.
+  //Close all the files opened by the process.
   for(int i = 2; i< MAX_FD; i++)
   {
     if(cur->fdt[i] != NULL)
     {
-      file_close(cur->fdt[i]);
-      cur->fdt[i] = NULL;
+      close(i);
     }
   }
 

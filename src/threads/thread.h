@@ -4,7 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "fixed_point.h"
 #include "threads/synch.h"
 
 /* States in a thread's life cycle. */
@@ -92,13 +91,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int original_priority;              /* Original priority, design for priority donation. */
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t time_to_wake_up;            /* The time when to wake up the thread. */
-    struct lock *waiting_lock;          /* The lock that the thread is waiting for. */
-    struct list locks_holding;          /* The list of locks that the thread is holding. */
-    int nice;                           /* The nice value of the thread. */
-    fixed_point_t recent_cpu;           /* The recent_cpu value of the thread. */
     int exit_status;                    /* The exit status of the thread. */
     struct thread* parent;              /* The parent thread of the thread. */
     struct list child_list;             /* The list of children threads of the thread. */
@@ -147,8 +141,6 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 void thread_sleep(int64_t);
 
-bool cmp_priority(const struct list_elem *, const struct list_elem *, void *aux UNUSED);
-void yield_if_higher_priority_in_timer(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
@@ -161,9 +153,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-void update_all_priority(void);
-void update_all_recent_cpu(void);
-void update_load_avg(void);
-void increment_recent_cpu(void);
 
 #endif /* threads/thread.h */

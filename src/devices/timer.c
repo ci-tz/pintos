@@ -193,21 +193,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
-
-  //4.4BSD scheduler
-  if(thread_mlfqs)
-  {
-    increment_recent_cpu(); //increment recent_cpu of current thread
-    if(ticks % TIMER_FREQ == 0) //every second
-    {
-      update_load_avg();
-      update_all_recent_cpu();
-    }
-    if(ticks % 4 == 0) //every 4 ticks
-    {
-      update_all_priority();
-    }
-  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

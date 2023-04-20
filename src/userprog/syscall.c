@@ -162,7 +162,7 @@ static bool addr_valid_str(void *ptr)
 /* Verify the validity of a user-provided buffer. */
 static bool addr_valid_buf(void *ptr, unsigned size)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < size; i++)
   {
     if (!addr_valid(ptr + i))
