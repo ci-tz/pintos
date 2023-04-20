@@ -176,7 +176,7 @@ static void check_addr_str(void *ptr)
 {
   if (!addr_valid_str(ptr))
   {
-    printf("Invalid string pointer: %p\n", ptr);
+    //printf("Invalid string pointer: %p\n", ptr);
     exit(-1);
   }
 }
@@ -186,7 +186,7 @@ static void check_addr_buf(void *ptr, unsigned size)
 {
   if (!addr_valid_buf(ptr, size))
   {
-    printf("Invalid buffer pointer: %p\n", ptr);
+    //printf("Invalid buffer pointer: %p\n", ptr);
     exit(-1);
   }
 }

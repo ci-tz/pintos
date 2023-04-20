@@ -27,6 +27,22 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* User process's information. */
+struct process_info
+  {
+    tid_t tid;                          /* Thread identifier. */
+    struct thread* curr_thread;         /* The thread of the process. */
+    struct process_info* parent;        /* The parent process of the process. */
+    int exit_status;                    /* The exit status of the thread. */
+    struct semaphore wait_sema;         /* The semaphore for the child thread. */
+    struct semaphore load_sema;         /* The semaphore for the child thread. */
+    bool load_success;                  /* The load success of the child thread. */
+    bool is_waited;                     /* Whether the thread is waited. */
+    struct list child_list;             /* The list of children threads of the thread. */
+    struct list_elem elem;              /* List element. */
+  };
+
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -93,16 +109,10 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t time_to_wake_up;            /* The time when to wake up the thread. */
-    int exit_status;                    /* The exit status of the thread. */
-    struct thread* parent;              /* The parent thread of the thread. */
-    struct list child_list;             /* The list of children threads of the thread. */
-    struct list_elem child_elem;        /* The list element of the child list. */
-    struct semaphore wait_sema;         /* The semaphore for the child thread. */
-    struct semaphore load_sema;         /* The semaphore for the child thread. */
-    bool load_success;                  /* The load success of the child thread. */
     struct file **fdt;                  /* The file descriptor table of the thread. */
     int next_fd;                        /* The next file descriptor of the thread. */
     struct file *exec_file;             /* The executable file of the thread. */
+    struct process_info *process_info;  /* The process information of the thread. */
     
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

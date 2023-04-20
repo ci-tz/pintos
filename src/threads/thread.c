@@ -192,9 +192,21 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-  t->parent = curr;
-  list_push_back(&curr->child_list, &t->child_elem);
   t->fdt = calloc(MAX_FD, sizeof(struct file*));
+
+  /* Initialize process info. */
+  t->process_info = calloc(1, sizeof(struct process_info));
+  t->process_info->tid = tid;
+  t->process_info->curr_thread = t;
+  t->process_info->parent = curr->process_info;
+  t->process_info->exit_status = -1;
+  sema_init(&t->process_info->wait_sema, 0);
+  sema_init(&t->process_info->load_sema, 0);
+  t->process_info->load_success = false;
+  t->process_info->is_waited = false;
+  list_init(&t->process_info->child_list);
+  list_push_back(&curr->process_info->child_list, &t->process_info->elem);
+
   
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -493,12 +505,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   t->time_to_wake_up = 0;
-  t->exit_status = 0;
-  t->parent = NULL;
-  list_init(&t->child_list);
-  sema_init(&t->wait_sema, 0);
-  sema_init(&t->load_sema, 0);
-  t->load_success = false;
   t->fdt = NULL;
   t->next_fd = 2;
   t->exec_file = NULL;

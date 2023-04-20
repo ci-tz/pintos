@@ -66,7 +66,6 @@ static int NO_INLINE
 consume_some_resources_and_die (int seed)
 {
   consume_some_resources ();
-  printf("finish consume some resources\n");
   random_init (seed);
   volatile int *PHYS_BASE = (volatile int *)0xC0000000;
 

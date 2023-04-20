@@ -60,6 +60,8 @@ process_execute (const char *file_name)
   }
   if(!thread_current()->load_success)
     tid = TID_ERROR;
+  //Reset load_success
+  thread_current()->load_success = false;
   return tid;
 }
 
@@ -93,7 +95,7 @@ start_process (void *file_name_)
   {
     palloc_free_page (file_name);
     sema_up(&cur->parent->load_sema);
-    printf("load failed\n");
+    //printf("load failed\n");
     exit(-1);
   }
   /* Load success */
@@ -135,28 +137,24 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  //Search the descriptor of the child process by using child_tid.
+  struct thread* cur = thread_current();
   struct list_elem *e;
-  struct thread *cur = thread_current();
-  struct thread *cp = NULL;
-  //protect child_list
-  for(e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e))
+  struct process_info *cp = NULL;
+  for(e = list_begin(&cur->process_info->child_list); e != list_end(&cur->process_info->child_list); e = list_next(e))
   {
-    cp = list_entry(e, struct thread, child_elem);
+    cp = list_entry(e, struct process_info, elem);
     if(cp->tid == child_tid)
       break;
   }
-  if(e == list_end(&cur->child_list))
+  if(cp == NULL)
     return -1;
-  //Wait until the child process exits.
-  sema_down(&cur->wait_sema);
-  //Remove the child process from the child_list.
-  list_remove(e);
-  //Retrieve the child’s exit status
+  if(cp->is_waited)
+    return -1;
+  cp->is_waited = true;
+  sema_down(&cp->wait_sema);
   int exit_status = cp->exit_status;
-  //Free the child process's resources.
-  palloc_free_page(cp);
-  //Return the exit status of the child process.
+  list_remove(&cp->elem);
+  free(cp);
   return exit_status;
 }
 
