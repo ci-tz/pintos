@@ -35,7 +35,6 @@ struct process_info
     struct thread* parent_thread;       /* The parent thread of the thread. */
     int exit_status;                    /* The exit status of the thread. */
     bool is_waited;                     /* Whether the thread is waited. */
-    struct semaphore wait_sema;         /* The semaphore for the child thread. */
     struct list_elem elem;              /* List element. */
   };
 
@@ -110,9 +109,11 @@ struct thread
     int next_fd;                        /* The next file descriptor of the thread. */
     struct file *exec_file;             /* The executable file of the thread. */
     struct semaphore load_sema;         /* The semaphore for the child thread. */
+    struct semaphore wait_sema;         /* The semaphore for the child thread. */
     bool load_success;                  /* The load success of the child thread. */
     struct process_info *process_info;  /* The process information of the thread. */
-    struct list child_list;        /* The list of the child process information. */
+    struct list child_list;             /* The list of the child process information. */
+    int exit_status;                    /* The exit status of the thread. */
     
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

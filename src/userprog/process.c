@@ -52,17 +52,14 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy_2);
-  palloc_free_page (fn_copy_1);
-  sema_down(&thread_current()->load_sema);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy_2);
 
   struct thread* cur = thread_current();
   sema_down(&cur->load_sema);
   if(!cur->load_success)
-    return TID_ERROR;
-  //Load success
+    tid = TID_ERROR;
   cur->load_success = false;
+  palloc_free_page (fn_copy_1);
+  //fn_copy_2 will be freed in start_process()
   return tid;
 }
 
@@ -96,6 +93,7 @@ start_process (void *file_name_)
   {
     cur->process_info->parent_thread->load_success = false;
     sema_up(&cur->process_info->parent_thread->load_sema);
+    palloc_free_page (file_name);
     exit(-1);
   }
   /* Load success */
@@ -115,7 +113,6 @@ start_process (void *file_name_)
   argument_stack(parse, count, &if_.esp);
   /* palloc_free_page() must be called after argument_stack() */
   palloc_free_page (file_name);
-  //hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //DEBUG
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -149,7 +146,7 @@ process_wait (tid_t child_tid)
   if(cp->is_waited)
     return -1;
   cp->is_waited = true;
-  sema_down(&cp->wait_sema);
+  sema_down(&cur->wait_sema);
   int exit_status = cp->exit_status;
   list_remove(&cp->elem);
   free(cp);
@@ -162,23 +159,11 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
-  //Change the process's child process's parent to NULL
-  struct list_elem *e;
-  struct thread *cp = NULL;
-  for(e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e))
-  {
-    cp = list_entry(e, struct thread, child_elem);
-    cp->parent = NULL;
-  }
-
   //Close all the files opened by the process.
   for(int i = 2; i< MAX_FD; i++)
   {
     if(cur->fdt[i] != NULL)
-    {
       close(i);
-    }
   }
 
   //Deallocate the file descriptor table.
@@ -189,6 +174,37 @@ process_exit (void)
   {
     file_allow_write(cur->exec_file);
     file_close(cur->exec_file);
+  }
+
+  struct list_elem *e;
+  struct process_info *cp = NULL;
+  struct thread* child_thread = NULL;
+
+  for(e = list_begin(&cur->child_list); e != list_end(&cur->child_list); )
+  {
+    cp = list_entry(e, struct process_info, elem);
+    child_thread = cp->curr_thread;
+    if(child_thread == NULL) //This child has already exited.We need to free the process_info.
+    {
+      e = list_remove(e);
+      free(cp);
+    }
+    else //This child is still running. We need to set its parent_thread to NULL.
+    {
+      child_thread->process_info->parent_thread = NULL;
+      e = list_next(e);
+    }
+  }
+  bool has_parent = cur->process_info->parent_thread != NULL;
+  if(!has_parent)
+  {
+    free(cur->process_info);
+  }
+  else
+  {
+    cur->process_info->exit_status = cur->exit_status;
+    cur->process_info->curr_thread = NULL;
+    sema_up(&cur->process_info->parent_thread->wait_sema);
   }
 
   /* Destroy the current process's page directory and switch back

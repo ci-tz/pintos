@@ -204,7 +204,6 @@ thread_create (const char *name, int priority,
   pi->parent_thread = curr;
   pi->exit_status = -1;
   pi->is_waited = false;
-  sema_init(&pi->wait_sema, 0);
   list_push_back(&curr->child_list, &pi->elem);
 
   
@@ -308,7 +307,6 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
-  sema_up(&thread_current()->parent->wait_sema);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -510,6 +508,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exec_file = NULL;
   t->process_info = NULL;
   sema_init(&t->load_sema, 0);
+  sema_init(&t->wait_sema, 0);
   t->load_success = false;
   list_init(&t->child_list);
 
