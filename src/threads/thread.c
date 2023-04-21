@@ -196,16 +196,16 @@ thread_create (const char *name, int priority,
 
   /* Initialize process info. */
   t->process_info = calloc(1, sizeof(struct process_info));
-  t->process_info->tid = tid;
-  t->process_info->curr_thread = t;
-  t->process_info->parent_thread = curr;
-  t->process_info->exit_status = -1;
-  sema_init(&t->process_info->wait_sema, 0);
-  sema_init(&t->process_info->load_sema, 0);
-  t->process_info->load_success = false;
-  t->process_info->is_waited = false;
-  list_init(&t->process_info->child_list);
-  list_push_back(&curr->process_info->child_list, &t->process_info->elem);
+  if(t->process_info == NULL)
+    return TID_ERROR;
+  struct process_info* pi = t->process_info;
+  pi->tid = tid;
+  pi->curr_thread = t;
+  pi->parent_thread = curr;
+  pi->exit_status = -1;
+  pi->is_waited = false;
+  sema_init(&pi->wait_sema, 0);
+  list_push_back(&curr->child_list, &pi->elem);
 
   
   /* Stack frame for kernel_thread(). */
@@ -509,6 +509,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->next_fd = 2;
   t->exec_file = NULL;
   t->process_info = NULL;
+  sema_init(&t->load_sema, 0);
+  t->load_success = false;
+  list_init(&t->child_list);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

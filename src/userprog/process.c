@@ -52,16 +52,17 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy_2);
+  palloc_free_page (fn_copy_1);
   sema_down(&thread_current()->load_sema);
   if (tid == TID_ERROR)
-  {
-    palloc_free_page (fn_copy_1);
-    //fn_copy_2 is freed in start_process
-  }
-  if(!thread_current()->load_success)
-    tid = TID_ERROR;
-  //Reset load_success
-  thread_current()->load_success = false;
+    palloc_free_page (fn_copy_2);
+
+  struct thread* cur = thread_current();
+  sema_down(&cur->load_sema);
+  if(!cur->load_success)
+    return TID_ERROR;
+  //Load success
+  cur->load_success = false;
   return tid;
 }
 
@@ -93,15 +94,11 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   if (!success)
   {
-    palloc_free_page (file_name);
-    sema_up(&cur->parent->load_sema);
-    //printf("load failed\n");
+    cur->process_info->parent_thread->load_success = false;
+    sema_up(&cur->process_info->parent_thread->load_sema);
     exit(-1);
   }
   /* Load success */
-  cur->parent->load_success = true;
-  sema_up(&cur->parent->load_sema);
-
   lock_acquire(&filesys_lock);
   struct file* file = filesys_open(parse[0]);
   if(file != NULL)
@@ -111,7 +108,8 @@ start_process (void *file_name_)
   }
   lock_release(&filesys_lock);
 
-
+  cur->process_info->parent_thread->load_success = true;
+  sema_up(&cur->process_info->parent_thread->load_sema);
 
   /* Set up stack */
   argument_stack(parse, count, &if_.esp);
@@ -140,7 +138,7 @@ process_wait (tid_t child_tid)
   struct thread* cur = thread_current();
   struct list_elem *e;
   struct process_info *cp = NULL;
-  for(e = list_begin(&cur->process_info->child_list); e != list_end(&cur->process_info->child_list); e = list_next(e))
+  for(e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e))
   {
     cp = list_entry(e, struct process_info, elem);
     if(cp->tid == child_tid)
