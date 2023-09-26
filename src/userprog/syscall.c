@@ -21,10 +21,11 @@ static uint8_t *user_esp;
 
 static void syscall_handler (struct intr_frame *);
 
-/* Helper functions for verifying user-provided pointers. */
-static bool addr_valid(void *ptr);
-static bool addr_valid_str(void *ptr);
-static bool addr_valid_buf(void *ptr, unsigned size);
+/* Helper function, verify the validity of a user-provided pointer. */
+static void check_user (const uint8_t *uaddr);
+static int get_user (const uint8_t *uaddr);
+static bool put_user (uint8_t *udst, uint8_t byte);
+static void copy_from_user (void *src, void *des, size_t bytes);
 
 /* Called by the syscall_handler to terminate the process if the user-provided string is invalid. */
 static void check_addr_str(void *ptr);
@@ -136,60 +137,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   }
 }
 
-/* Helper function, verify the validity of a user-provided pointer. */
-static bool addr_valid(void *ptr)
-{
-  if (ptr == NULL || !is_user_vaddr(ptr) || pagedir_get_page(thread_current()->pagedir, ptr) == NULL)
-    return false;
-  return true;
-}
-
-
-/* Verify the validity of a user-provided string. */
-static bool addr_valid_str(void *ptr)
-{
-  int i;
-  for (i = 0; ; i++)
-  {
-    if (!addr_valid(ptr + i))
-      return false;
-    if (*((char *)ptr + i) == '\0')
-      break;
-  }
-  return true;
-}
-
-/* Verify the validity of a user-provided buffer. */
-static bool addr_valid_buf(void *ptr, unsigned size)
-{
-  unsigned i;
-  for (i = 0; i < size; i++)
-  {
-    if (!addr_valid(ptr + i))
-      return false;
-  }
-  return true;
-}
-
-/* Verify and terminate the process if the user-provided string is invalid. */
-static void check_addr_str(void *ptr)
-{
-  if (!addr_valid_str(ptr))
-  {
-    //printf("Invalid string pointer: %p\n", ptr);
-    exit(-1);
-  }
-}
-
-/* Verify and terminate the process if the user-provided buffer is invalid. */
-static void check_addr_buf(void *ptr, unsigned size)
-{
-  if (!addr_valid_buf(ptr, size))
-  {
-    //printf("Invalid buffer pointer: %p\n", ptr);
-    exit(-1);
-  }
-}
 
 /* Terminates Pintos by calling shutdown_power_off() (declared in "threads/init.h"). 
    This should be seldom used, because you lose some information about possible deadlock situations, etc. */
@@ -390,5 +337,59 @@ static int read(int fd, void *buffer, unsigned size)
     int bytes_read = file_read(file, buffer, size);
     lock_release(&filesys_lock);
     return bytes_read;
+  }
+}
+
+/**
+ * Reads a single 'byte' at user memory admemory at 'uaddr'.
+ * 'uaddr' must be below PHYS_BASE.
+ *
+ * Returns the byte value if successful (extract the least significant byte),
+ * or -1 in case of error (a segfault occurred or invalid uaddr)
+ */
+static int get_user(const uint8_t *uaddr)
+{
+  if (!is_user_vaddr(uaddr))
+    return -1;
+  int result;
+  asm("movl $1f, %0; movzbl %1, %0; 1:" : "=&a"(result) : "m"(*uaddr));
+  return result;
+}
+
+/* Writes a single byte (content is 'byte') to user address 'udst'.
+ * 'udst' must be below PHYS_BASE.
+ *
+ * Returns true if successful, false if a segfault occurred.
+ */
+
+static bool put_user(uint8_t *udst, uint8_t byte)
+{
+  if (!is_user_vaddr(udst))
+    return false;
+
+  int error_code;
+  // as suggested in the reference manual, see (3.1.5)
+  asm("movl $1f, %0; movb %b2, %1; 1:"
+      : "=&a"(error_code), "=m"(*udst)
+      : "q"(byte));
+  return error_code != -1;
+}
+
+/**
+ * Copy consecutive `bytes` of data from user memory space with the
+ * starting address `src`, and writes to `dst`.
+ *
+ * In case of invalid memory access, exit() is called and consequently
+ * the process is terminated with return code -1.
+ */
+static void copy_from_user(void *src, void *des, size_t bytes)
+{
+  int value;
+  for (int i = 0; i < bytes; i++) {
+    value = get_user(src + i);
+    if (value == -1)
+      exit(-1);
+    else
+      *((uint8_t *)des + i) = value;
   }
 }
