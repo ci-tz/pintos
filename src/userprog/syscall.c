@@ -4,6 +4,8 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
+#include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -26,10 +28,11 @@ static void validate_ptr_range(const void *vaddr, size_t size);
 static void validate_string(const char *str);
 static int get_user(const uint8_t *uaddr);
 static bool put_user(uint8_t *udst, uint8_t byte);
-static bool copy_from_user(void *src, void *des, size_t bytes);
+static bool copy_from_user(const void *src, void *des, size_t bytes);
 static bool copy_to_user(void *src, void *des, size_t bytes);
 static void copy_from_user_exits(void *src, void *des, size_t bytes);
 static void copy_to_user_exits(void *src, void *des, size_t bytes);
+static bool copy_from_user_str(void *src, void *des);
 
 static int find_next_fd(void);
 
@@ -80,33 +83,33 @@ static void syscall_handler(struct intr_frame *f UNUSED)
     }
     case SYS_EXEC: {
         int cmd_line;
-        copy_from_user(user_esp + 4, &cmd_line, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &cmd_line, sizeof(int));
         f->eax = exec((char *)cmd_line);
         break;
     }
     case SYS_CREATE: {
         int filename;
         int initial_size;
-        copy_from_user(user_esp + 4, &filename, sizeof(int));
-        copy_from_user(user_esp + 8, &initial_size, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &filename, sizeof(int));
+        copy_from_user_exits(user_esp + 8, &initial_size, sizeof(int));
         f->eax = create((char *)filename, initial_size);
         break;
     }
     case SYS_REMOVE: {
         int filename;
-        copy_from_user(user_esp + 4, &filename, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &filename, sizeof(int));
         f->eax = remove((char *)filename);
         break;
     }
     case SYS_OPEN: {
         int filename;
-        copy_from_user(user_esp + 4, &filename, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &filename, sizeof(int));
         f->eax = open((char *)filename);
         break;
     }
     case SYS_FILESIZE: {
         int fd;
-        copy_from_user(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
         f->eax = filesize(fd);
         break;
     }
@@ -114,9 +117,9 @@ static void syscall_handler(struct intr_frame *f UNUSED)
         int fd;
         int buffer;
         int size;
-        copy_from_user(user_esp + 4, &fd, sizeof(int));
-        copy_from_user(user_esp + 8, &buffer, sizeof(int));
-        copy_from_user(user_esp + 12, &size, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 8, &buffer, sizeof(int));
+        copy_from_user_exits(user_esp + 12, &size, sizeof(int));
         f->eax = read(fd, (void *)buffer, size);
         break;
     }
@@ -124,29 +127,29 @@ static void syscall_handler(struct intr_frame *f UNUSED)
         int fd;
         int buffer;
         int size;
-        copy_from_user(user_esp + 4, &fd, sizeof(int));
-        copy_from_user(user_esp + 8, &buffer, sizeof(int));
-        copy_from_user(user_esp + 12, &size, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 8, &buffer, sizeof(int));
+        copy_from_user_exits(user_esp + 12, &size, sizeof(int));
         f->eax = write(fd, (void *)buffer, size);
         break;
     }
     case SYS_SEEK: {
         int fd;
         int position;
-        copy_from_user(user_esp + 4, &fd, sizeof(int));
-        copy_from_user(user_esp + 8, &position, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 8, &position, sizeof(int));
         seek(fd, position);
         break;
     }
     case SYS_TELL: {
         int fd;
-        copy_from_user(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
         f->eax = tell(fd);
         break;
     }
     case SYS_CLOSE: {
         int fd;
-        copy_from_user(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
         close(fd);
         break;
     }
@@ -183,24 +186,38 @@ static int wait(int pid) { return process_wait(pid); }
    written. */
 static int write(int fd, const void *buffer, unsigned size)
 {
-    // memory validation : [buffer+0, buffer+size) should be all valid
-    validate_ptr_range(buffer, size);
-
-    if (fd == STDOUT_FILENO) {
-        putbuf(buffer, size);
-        return size;
-    } else {
-        // Judge if fd is leagal
-        if (fd < 2 || fd >= MAX_FD)
-            return -1;
-        struct file *file = thread_current()->fdt[fd];
-        if (file == NULL)
-            return -1;
-        lock_acquire(&filesys_lock);
-        int bytes_written = file_write(file, buffer, size);
-        lock_release(&filesys_lock);
-        return bytes_written;
+    if(size == 0) {
+        return 0;
     }
+    void *kbuffer = malloc(size);
+    if (kbuffer == NULL) {
+        exit(-1);
+    }
+
+    bool success = copy_from_user(buffer, kbuffer, size);
+    if (!success) {
+        free(kbuffer);
+        exit(-1);
+    }
+
+    int bytes_written = 0;
+    if (fd == 1) {
+        putbuf(kbuffer, size);
+        bytes_written = size;
+    } else {
+        if (fd < 2 || fd >= MAX_FD) {
+            exit(-1);
+        }
+        struct file *file = thread_current()->fdt[fd];
+        if (file == NULL) {
+            exit(-1);
+        }
+        lock_acquire(&filesys_lock);
+        bytes_written = file_write(file, kbuffer, size);
+        lock_release(&filesys_lock);
+    }
+    free(kbuffer);
+    return bytes_written;
 }
 
 /* Changes the next byte to be read or written in open file fd to position. */
@@ -261,8 +278,18 @@ void close(int fd)
    You must use appropriate synchronization to ensure this. */
 static int exec(const char *cmd_line)
 {
-    validate_string(cmd_line);
-    return process_execute(cmd_line);
+    void *ptr = palloc_get_page(0);
+    if (ptr == NULL) {
+        return -1;
+    }
+    bool success = copy_from_user_str((void *)cmd_line, ptr);
+    if (!success) {
+        palloc_free_page(ptr);
+        exit(-1);
+    }
+    tid_t tid = process_execute((char *)ptr);
+    palloc_free_page(ptr);
+    return tid;
 }
 
 /* Creates a new file called file initially initial_size bytes in size. Returns
@@ -271,11 +298,19 @@ static int exec(const char *cmd_line)
    system call. */
 static bool create(const char *file, unsigned initial_size)
 {
-    validate_string(file);
-
+    void *ptr = palloc_get_page(0);
+    if (ptr == NULL) {
+        exit(-1);
+    }
+    bool success = copy_from_user_str((void *)file, ptr);
+    if (!success) {
+        palloc_free_page(ptr);
+        exit(-1);
+    }
     lock_acquire(&filesys_lock);
-    bool success = filesys_create(file, initial_size);
+    success = filesys_create((char *)ptr, initial_size);
     lock_release(&filesys_lock);
+    palloc_free_page(ptr);
     return success;
 }
 
@@ -285,11 +320,19 @@ static bool create(const char *file, unsigned initial_size)
    details. */
 static bool remove(const char *file)
 {
-    validate_string(file);
-
+    void *ptr = palloc_get_page(0);
+    if (ptr == NULL) {
+        exit(-1);
+    }
+    bool success = copy_from_user_str((void *)file, ptr);
+    if (!success) {
+        palloc_free_page(ptr);
+        exit(-1);
+    }
     lock_acquire(&filesys_lock);
-    bool success = filesys_remove(file);
+    success = filesys_remove((char *)ptr);
     lock_release(&filesys_lock);
+    palloc_free_page(ptr);
     return success;
 }
 
@@ -297,14 +340,23 @@ static bool remove(const char *file)
    "file descriptor" (fd), or -1 if the file could not be opened. */
 static int open(const char *file)
 {
-    validate_string(file);
+    void *ptr = palloc_get_page(0);
+    if (ptr == NULL) {
+        exit(-1);
+    }
+    bool success = copy_from_user_str((void *)file, ptr);
+    if (!success) {
+        palloc_free_page(ptr);
+        exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    struct file *f = filesys_open(file);
+    struct file *f = filesys_open((char *)ptr);
     lock_release(&filesys_lock);
-    if (f == NULL)
+    if (f == NULL) {
+        palloc_free_page(ptr);
         return -1;
-    else {
+    } else {
         struct thread *curr = thread_current();
         if (curr->next_fd == -1) {
             printf("ERROR: File descriptor table is full.\n");
@@ -313,6 +365,7 @@ static int open(const char *file)
         curr->fdt[curr->next_fd] = f;
         int fd = curr->next_fd;
         curr->next_fd = find_next_fd();
+        palloc_free_page(ptr);
         return fd;
     }
 }
@@ -347,26 +400,41 @@ static int filesize(int fd)
    using input_getc(). */
 static int read(int fd, void *buffer, unsigned size)
 {
-    // memory validation : [buffer+0, buffer+size) should be all valid
-    validate_ptr_range(buffer, size);
-
-    if (fd == 0) {
-        unsigned i;
-        for (i = 0; i < size; i++)
-            *((char *)buffer + i) = input_getc();
-        return size;
-    } else {
-        // Judge if fd is leagal
-        if (fd < 2 || fd >= MAX_FD)
-            return -1;
-        struct file *file = thread_current()->fdt[fd];
-        if (file == NULL)
-            return -1;
-        lock_acquire(&filesys_lock);
-        int bytes_read = file_read(file, buffer, size);
-        lock_release(&filesys_lock);
-        return bytes_read;
+    if(size == 0) {
+        return 0;
     }
+
+    void *kbuff = malloc(size);
+    if (kbuff == NULL) {
+        exit(-1);
+    }
+
+    unsigned bytes_read = 0;
+    bool success = false;
+    if (fd == 0) {
+        while (bytes_read < size) {
+            *((char *)kbuff + bytes_read) = input_getc();
+            bytes_read++;
+        }
+    } else {
+        if (fd < 2 || fd >= MAX_FD) {
+            exit(-1);
+        }
+        struct file *file = thread_current()->fdt[fd];
+        if (file == NULL) {
+            exit(-1);
+        }
+        lock_acquire(&filesys_lock);
+        bytes_read = file_read(file, kbuff, size);
+        lock_release(&filesys_lock);
+    }
+    success = copy_to_user(kbuff, buffer, bytes_read);
+    if(!success) {
+        free(kbuff);
+        exit(-1);
+    }
+    free(kbuff);
+    return bytes_read;
 }
 
 /**
@@ -440,8 +508,7 @@ static bool put_user(uint8_t *udst, uint8_t byte)
     return error_code != -1;
 }
 
-
-static bool copy_from_user(void *src, void *des, size_t bytes)
+static bool copy_from_user(const void *src, void *des, size_t bytes)
 {
     uint8_t *src_ptr = (uint8_t *)src;
     uint8_t *des_ptr = (uint8_t *)des;
@@ -475,4 +542,20 @@ static void copy_to_user_exits(void *src, void *des, size_t bytes)
 {
     if (!copy_to_user(src, des, bytes))
         exit(-1);
+}
+
+static bool copy_from_user_str(void *src, void *des)
+{
+    uint8_t *src_ptr = (uint8_t *)src;
+    uint8_t *des_ptr = (uint8_t *)des;
+    int byte;
+    do {
+        byte = get_user(src_ptr);
+        if (byte == -1)
+            return false;
+        *des_ptr = byte;
+        src_ptr++;
+        des_ptr++;
+    } while (byte != '\0');
+    return true;
 }
