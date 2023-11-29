@@ -18,7 +18,11 @@ static long long page_fault_cnt;
 
 static void kill(struct intr_frame *);
 static void page_fault(struct intr_frame *);
-
+#ifdef VM
+static void kill_wrapper(struct intr_frame *f, void *fault_addr,
+                         bool not_present, bool write, bool user);
+static void need_grow_stack(void *fault_addr);
+#endif
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -154,30 +158,30 @@ static void page_fault(struct intr_frame *f)
 #ifdef VM
     /* The handler is called because of writing r/o page. */
     if (!not_present) {
-        goto kill;
+        kill_wrapper(f, fault_addr, not_present, write, user);
     }
     /* Check the validity of the fault address. */
     if (is_kernel_vaddr(fault_addr) || fault_addr == NULL) {
-        goto kill;
+        kill_wrapper(f, fault_addr, not_present, write, user);
     }
-
-    // TODO: Check if need to grow stack
 
     void *fault_page = pg_round_down(fault_addr);
-
     struct sup_page_table *spt = thread_current()->spt;
     struct sup_pte *pte = sup_pte_lookup(spt, fault_page);
-    if (pte == NULL) {
-        goto kill;
+    if (pte == NULL) { /* The page is not in the supplemental page table. */
+        if (need_grow_stack(fault_addr)) {
+            // TODO: add supplemental page table entry for the new page.
+        } else { /* Reference to an unmapped page. */
+            kill_wrapper(f, fault_addr, not_present, write, user);
+        }
     }
+
     bool success = handle_mm_fault(pte);
     if (!success) {
-        goto kill;
+        kill_wrapper(f, fault_addr, not_present, write, user);
     }
     return;
-
-kill:
-#endif
+#else
     /* The only chance that a page fault happens in kernel context is when
       dealing with user-provided pointer through system call. In order to
       support get_user and put_user, a page fault in the kernel merely sets eax
@@ -187,9 +191,17 @@ kill:
         f->eax = -1;
         return;
     }
+#endif
+}
+
+#ifdef VM
+static void kill_wrapper(struct intr_frame *f, void *fault_addr,
+                         bool not_present, bool write, bool user)
+{
     /* Page fault can't be handled - kill the process */
     printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
            not_present ? "not present" : "rights violation",
            write ? "writing" : "reading", user ? "user" : "kernel");
     kill(f);
 }
+#endif

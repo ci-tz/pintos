@@ -25,8 +25,11 @@ static void syscall_handler(struct intr_frame *);
 static void validate_ptr_range(const void *vaddr, size_t size);
 static void validate_string(const char *str);
 static int get_user(const uint8_t *uaddr);
-// static bool put_user(uint8_t *udst, uint8_t byte);
-static void copy_from_user(void *src, void *des, size_t bytes);
+static bool put_user(uint8_t *udst, uint8_t byte);
+static bool copy_from_user(void *src, void *des, size_t bytes);
+static bool copy_to_user(void *src, void *des, size_t bytes);
+static void copy_from_user_exits(void *src, void *des, size_t bytes);
+static void copy_to_user_exits(void *src, void *des, size_t bytes);
 
 static int find_next_fd(void);
 
@@ -57,7 +60,7 @@ static void syscall_handler(struct intr_frame *f UNUSED)
     user_esp = f->esp;
     int syscall_num;
 
-    copy_from_user(user_esp, &syscall_num, sizeof(int));
+    copy_from_user_exits(user_esp, &syscall_num, sizeof(int));
     switch (syscall_num) {
     case SYS_HALT: {
         halt();
@@ -65,7 +68,7 @@ static void syscall_handler(struct intr_frame *f UNUSED)
     }
     case SYS_EXIT: {
         int exit_status;
-        copy_from_user(user_esp + 4, &exit_status, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &exit_status, sizeof(int));
         exit(exit_status);
         break;
     }
@@ -424,34 +427,52 @@ static int get_user(const uint8_t *uaddr)
  * Returns true if successful, false if a segfault occurred.
  */
 
-// static bool put_user(uint8_t *udst, uint8_t byte)
-// {
-    // if (!is_user_vaddr(udst))
-        // return false;
-
-    // int error_code;
-    // // as suggested in the reference manual, see (3.1.5)
-    // asm("movl $1f, %0; movb %b2, %1; 1:"
-        // : "=&a"(error_code), "=m"(*udst)
-        // : "q"(byte));
-    // return error_code != -1;
-// }
-
-/**
- * Copy consecutive `bytes` of data from user memory space with the
- * starting address `src`, and writes to `dst`.
- *
- * In case of invalid memory access, exit() is called and consequently
- * the process is terminated with return code -1.
- */
-static void copy_from_user(void *src, void *des, size_t bytes)
+static bool put_user(uint8_t *udst, uint8_t byte)
 {
-    int value;
+    if (!is_user_vaddr(udst))
+        return false;
+
+    int error_code;
+    // as suggested in the reference manual, see (3.1.5)
+    asm("movl $1f, %0; movb %b2, %1; 1:"
+        : "=&a"(error_code), "=m"(*udst)
+        : "q"(byte));
+    return error_code != -1;
+}
+
+
+static bool copy_from_user(void *src, void *des, size_t bytes)
+{
+    uint8_t *src_ptr = (uint8_t *)src;
+    uint8_t *des_ptr = (uint8_t *)des;
     for (size_t i = 0; i < bytes; i++) {
-        value = get_user(src + i);
-        if (value == -1)
-            exit(-1);
-        else
-            *((uint8_t *)des + i) = value;
+        int byte = get_user(src_ptr + i);
+        if (byte == -1)
+            return false;
+        des_ptr[i] = byte;
     }
+    return true;
+}
+
+static bool copy_to_user(void *src, void *des, size_t bytes)
+{
+    uint8_t *src_ptr = (uint8_t *)src;
+    uint8_t *des_ptr = (uint8_t *)des;
+    for (size_t i = 0; i < bytes; i++) {
+        if (!put_user(des_ptr + i, src_ptr[i]))
+            return false;
+    }
+    return true;
+}
+
+static void copy_from_user_exits(void *src, void *des, size_t bytes)
+{
+    if (!copy_from_user(src, des, bytes))
+        exit(-1);
+}
+
+static void copy_to_user_exits(void *src, void *des, size_t bytes)
+{
+    if (!copy_to_user(src, des, bytes))
+        exit(-1);
 }
