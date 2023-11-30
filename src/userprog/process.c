@@ -12,12 +12,16 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#ifdef VM
+#include "vm/frame.h"
+#endif
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 
 extern struct lock filesys_lock;
 extern void close(int fd);
@@ -39,7 +43,7 @@ tid_t process_execute(const char *file_name)
 
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
-    fn_copy_1 = palloc_get_page(0);
+    fn_copy_1 = palloc_get_page(0); 
     fn_copy_2 = palloc_get_page(0);
     if (fn_copy_1 == NULL || fn_copy_2 == NULL)
         return TID_ERROR;
@@ -546,9 +550,14 @@ static bool setup_stack(void **esp)
     uint8_t *kpage;
     bool success = false;
 
+#ifndef VM
     kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     if (kpage == NULL)
         goto done;
+#else
+    kpage = palloc_get_page_frame();
+    ASSERT(kpage != NULL);
+#endif
 
     void *upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
 
@@ -665,7 +674,7 @@ static void argument_stack(char *parse[], int count, void **esp_ptr)
 bool handle_mm_fault(struct sup_pte *pte)
 {
     bool success = false;
-    void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    void *kpage = palloc_get_page(PAL_USER | PAL_ZERO); // TODO: change to pallloc_get_page_frame()
     if (kpage == NULL) {
         return false;
     }
