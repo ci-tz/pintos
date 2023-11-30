@@ -23,16 +23,16 @@ static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
     struct sup_pte *p = hash_entry(p_, struct sup_pte, hash_elem);
     // TODO: free resources
 
-    // switch (p->location) {
-    // case FILESYS:
-    //     break;
-    // case SWAP:
-    //     break;
-    // case FRAME:
-    //     break;
-    // case ZERO:
-    //     break;
-    // }
+    switch (p->location) {
+    case IN_FILESYS:
+        break;
+    case SWAP:
+        break;
+    case FRAME:
+        break;
+    case ZERO:
+        break;
+    }
 
     free(p);
 }

@@ -70,6 +70,11 @@ static void locate_block_devices (void);
 static void locate_block_device (enum block_type, const char *name);
 #endif
 
+#ifdef VM
+#include "vm/frame.h"
+struct frame_table global_frame_table;
+#endif
+
 int pintos_init (void) NO_RETURN;
 
 /* Pintos main entry point. */
@@ -125,6 +130,11 @@ pintos_init (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+#endif
+
+#ifdef VM
+  /* Initialize frame table. */
+  frame_table_init(&global_frame_table);
 #endif
 
   printf ("Boot complete.\n");
