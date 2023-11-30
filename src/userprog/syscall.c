@@ -24,14 +24,12 @@ static uint8_t *user_esp;
 static void syscall_handler(struct intr_frame *);
 
 /* Helper function, verify the validity of a user-provided pointer. */
-static void validate_ptr_range(const void *vaddr, size_t size);
-static void validate_string(const char *str);
 static int get_user(const uint8_t *uaddr);
 static bool put_user(uint8_t *udst, uint8_t byte);
 static bool copy_from_user(const void *src, void *des, size_t bytes);
 static bool copy_to_user(void *src, void *des, size_t bytes);
 static void copy_from_user_exits(void *src, void *des, size_t bytes);
-static void copy_to_user_exits(void *src, void *des, size_t bytes);
+// static void copy_to_user_exits(void *src, void *des, size_t bytes);
 static bool copy_from_user_str(void *src, void *des);
 
 static int find_next_fd(void);
@@ -77,7 +75,7 @@ static void syscall_handler(struct intr_frame *f UNUSED)
     }
     case SYS_WAIT: {
         int pid;
-        copy_from_user(user_esp + 4, &pid, sizeof(int));
+        copy_from_user_exits(user_esp + 4, &pid, sizeof(int));
         f->eax = wait(pid);
         break;
     }
@@ -192,7 +190,7 @@ static int write(int fd, const void *buffer, unsigned size)
     void *kbuffer = malloc(size);
     if (kbuffer == NULL) {
         exit(-1);
-    }
+            }
 
     bool success = copy_from_user(buffer, kbuffer, size);
     if (!success) {
@@ -280,7 +278,7 @@ static int exec(const char *cmd_line)
 {
     void *ptr = palloc_get_page(0);
     if (ptr == NULL) {
-        return -1;
+        exit(-1);
     }
     bool success = copy_from_user_str((void *)cmd_line, ptr);
     if (!success) {
@@ -438,42 +436,6 @@ static int read(int fd, void *buffer, unsigned size)
 }
 
 /**
- * Validates the pointer range of a given virtual address and size.
- * If any of the memory addresses in the range is invalid, the program exits
- * with status -1.
- *
- * @param vaddr The virtual address to start validating from.
- * @param size The size of the memory range to validate.
- */
-static void validate_ptr_range(const void *vaddr, size_t size)
-{
-    for (size_t i = 0; i < size; i++) {
-        if (get_user((uint8_t *)vaddr + i) == -1)
-            exit(-1);
-    }
-}
-
-/**
- * Validates a string by checking if it is a null-terminated string and has a
- * length less than or equal to MAX_STR_LEN. If the string is not valid, the
- * function exits with a status of -1.
- *
- * @param str The string to be validated.
- */
-static void validate_string(const char *str)
-{
-#define MAX_STR_LEN 100
-    int count = 0;
-    char c;
-    do {
-        c = get_user((uint8_t *)str + count) & 0xff;
-        if (c == -1)
-            exit(-1);
-        count++;
-    } while (c != '\0' && count < MAX_STR_LEN);
-}
-
-/**
  * Reads a single 'byte' at user memory admemory at 'uaddr'.
  * 'uaddr' must be below PHYS_BASE.
  *
@@ -538,11 +500,11 @@ static void copy_from_user_exits(void *src, void *des, size_t bytes)
         exit(-1);
 }
 
-static void copy_to_user_exits(void *src, void *des, size_t bytes)
-{
-    if (!copy_to_user(src, des, bytes))
-        exit(-1);
-}
+// static void copy_to_user_exits(void *src, void *des, size_t bytes)
+// {
+//     if (!copy_to_user(src, des, bytes))
+//         exit(-1);
+// }
 
 static bool copy_from_user_str(void *src, void *des)
 {

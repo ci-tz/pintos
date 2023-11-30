@@ -646,7 +646,7 @@ static void argument_stack(char *parse[], int count, void **esp_ptr)
         *(char **)esp = parse[i];
     }
     /* Push argv. */
-    char **argv = esp;
+    char **argv = (char **)esp;
     esp -= 4;
     *(char ***)esp = argv;
 
