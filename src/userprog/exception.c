@@ -211,6 +211,6 @@ static bool need_grow_stack(void *fault_addr) {
     // if (fault_addr >= esp - 32 && fault_addr < PHYS_BASE) {
     //     return true;
     // }
-    // return false;
+    return false;
 }
 #endif

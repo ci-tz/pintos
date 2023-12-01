@@ -14,6 +14,7 @@
 #include "userprog/tss.h"
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/page.h"
 #endif
 #include <debug.h>
 #include <inttypes.h>
@@ -209,6 +210,7 @@ void process_exit(void)
     /* Free supplemental page table, and free resources related to it. */
 #ifdef VM
     sup_page_table_destroy(&cur->spt);
+    remove_related_frame_table_entry(cur);
 #endif
 
     /* Destroy the current process's page directory and switch back
@@ -549,19 +551,12 @@ static bool setup_stack(void **esp)
 {
     uint8_t *kpage;
     bool success = false;
-
-#ifndef VM
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-    if (kpage == NULL)
-        goto done;
-#else
-    kpage = palloc_get_page_frame();
-    ASSERT(kpage != NULL);
-#endif
-
     void *upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
 
 #ifdef VM
+    kpage = palloc_get_page_frame();
+    ASSERT(kpage != NULL);
+
     struct sup_pte *pte = sup_pte_alloc(upage, true, STACK, ZERO);
     if (pte == NULL)
         goto done;
@@ -571,12 +566,12 @@ static bool setup_stack(void **esp)
         free(pte);
         goto done;
     }
-
-    if (!sup_pte_insert(thread_current()->spt, pte)) {
-        free(pte);
-        goto done;
-    }
+    success = sup_pte_insert(thread_current()->spt, pte);
+    ASSERT(success);
 #else
+    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (kpage == NULL)
+        goto done;
     success = install_page(upage, kpage, true);
 
     if (!success) {
@@ -624,7 +619,9 @@ static bool install_page(struct sup_pte *pte, void *kpage)
     }
     pte->location = FRAME;
     pte->kpage = kpage;
-
+    frame_refer_to_page(kpage, pte);
+    //printf("[DEBUG] PROCESS %s: install_page: upage: %p, kpage: %p\n",
+           //thread_name(), pte->upage, kpage);
 done:
     return success;
 }
@@ -674,10 +671,8 @@ static void argument_stack(char *parse[], int count, void **esp_ptr)
 bool handle_mm_fault(struct sup_pte *pte)
 {
     bool success = false;
-    void *kpage = palloc_get_page(PAL_USER | PAL_ZERO); // TODO: change to pallloc_get_page_frame()
-    if (kpage == NULL) {
-        return false;
-    }
+    void *kpage = palloc_get_page_frame();
+    ASSERT(kpage != NULL);
     ASSERT(pte->location != FRAME);
     switch (pte->type) {
     case BIN:
@@ -703,7 +698,7 @@ bool handle_mm_fault(struct sup_pte *pte)
     }
     success = install_page(pte, kpage);
     if (!success) {
-        palloc_free_page(kpage);
+        palloc_free_page_frame(kpage);
         goto done;
     }
 done:
