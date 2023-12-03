@@ -39,6 +39,7 @@
 #endif
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/swap.h"
 #endif
 
 
@@ -76,6 +77,7 @@ static void locate_block_device (enum block_type, const char *name);
 
 #ifdef VM
 struct frame_table global_frame_table;
+struct swap_table global_swap_table;
 #endif
 
 int pintos_init (void) NO_RETURN;
@@ -138,6 +140,8 @@ pintos_init (void)
 #ifdef VM
   /* Initialize frame table. */
   frame_table_init(&global_frame_table);
+  /* Initialize swap table. */
+  swap_init(&global_swap_table);
 #endif
 
   printf ("Boot complete.\n");

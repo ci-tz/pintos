@@ -172,7 +172,7 @@ static void page_fault(struct intr_frame *f)
     if (!not_present) {
         goto done;
     }
-    if(is_kernel_vaddr(fault_addr) || fault_addr == NULL) {
+    if (is_kernel_vaddr(fault_addr) || fault_addr == NULL) {
         goto done;
     }
     /* Need to do demand paging. */
@@ -181,19 +181,21 @@ static void page_fault(struct intr_frame *f)
     struct sup_page_table *spt = thread_current()->spt;
     struct sup_pte *pte = sup_pte_lookup(spt, fault_page);
     if (pte == NULL) {
-        if(need_grow_stack(fault_addr)) {
-            //TODO: grow stack
-        } else {
-            success = false;
-        }
+        printf("[DEBUG] Not implemented yet\n");
+        success = false;
+        // TODO: implement stack growth
     }
     if (pte != NULL) {
         success = handle_mm_fault(pte);
+        if(!success) {
+            printf("[DEBUG] handle mm fault failed\n");
+        }
     }
 
 done:
     if (!success) {
-        if(user) {
+        if (user) {
+            printf("[DEBUG] kill user\n");
             kill(f);
             NOT_REACHED();
         } else {
@@ -206,11 +208,8 @@ done:
 }
 
 #ifdef VM
-static bool need_grow_stack(void *fault_addr) {
-    // void *esp = thread_current()->esp;
-    // if (fault_addr >= esp - 32 && fault_addr < PHYS_BASE) {
-    //     return true;
-    // }
+static bool need_grow_stack(void *fault_addr)
+{
     return false;
 }
 #endif

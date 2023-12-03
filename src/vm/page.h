@@ -5,6 +5,7 @@
 
 #include "filesys/file.h"
 #include "filesys/off_t.h"
+#include "vm/swap.h"
 #include <stdbool.h>
 #include <hash.h>
 #include <stdint.h>
@@ -36,7 +37,7 @@ struct sup_pte {
     uint32_t zero_bytes; // bytes to zero
 
     // for page in swap slot
-    uint32_t swap_index; // index of swap slot
+    swap_index_t swap_index; // index of swap slot
 
     // for page in physical frame
     void *kpage; // kernel virtual address

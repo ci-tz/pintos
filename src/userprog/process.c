@@ -15,6 +15,7 @@
 #ifdef VM
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/swap.h"
 #endif
 #include <debug.h>
 #include <inttypes.h>
@@ -23,10 +24,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 extern struct lock filesys_lock;
 extern void close(int fd);
 extern void exit(int status);
+#ifdef VM
+extern swap_table global_swap_table;
+#endif
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
@@ -44,7 +47,7 @@ tid_t process_execute(const char *file_name)
 
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
-    fn_copy_1 = palloc_get_page(0); 
+    fn_copy_1 = palloc_get_page(0);
     fn_copy_2 = palloc_get_page(0);
     if (fn_copy_1 == NULL || fn_copy_2 == NULL)
         return TID_ERROR;
@@ -211,6 +214,7 @@ void process_exit(void)
 #ifdef VM
     sup_page_table_destroy(&cur->spt);
     remove_related_frame_table_entry(cur);
+    // TODO: free swap slot
 #endif
 
     /* Destroy the current process's page directory and switch back
@@ -620,8 +624,8 @@ static bool install_page(struct sup_pte *pte, void *kpage)
     pte->location = FRAME;
     pte->kpage = kpage;
     frame_refer_to_page(kpage, pte);
-    //printf("[DEBUG] PROCESS %s: install_page: upage: %p, kpage: %p\n",
-           //thread_name(), pte->upage, kpage);
+    // printf("[DEBUG] PROCESS %s: install_page: upage: %p, kpage: %p\n",
+    // thread_name(), pte->upage, kpage);
 done:
     return success;
 }
@@ -680,18 +684,27 @@ bool handle_mm_fault(struct sup_pte *pte)
         if (pte->location == IN_FILESYS) {
             file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
         } else if (pte->location == SWAP) {
-            // TODO: swap_in(pte->swap_index, kpage);
+            ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
+            do_swap_in(&global_swap_table, pte->swap_index, kpage);
         }
         break;
     case BSS:
         ASSERT(pte->location != IN_FILESYS);
         if (pte->location == ZERO) {
-            ; // Do nothing
+            ; /* Do nothing */
         } else if (pte->location == SWAP) {
-            // TODO: swap_in(pte->swap_index, kpage);
+            ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
+            do_swap_in(&global_swap_table, pte->swap_index, kpage);
         }
         break;
     case STACK:
+        if (pte->location == ZERO) {
+            ; /* Do nothing */
+        } else if (pte->location == SWAP) {
+            ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
+            do_swap_in(&global_swap_table, pte->swap_index, kpage);
+        }
+        break;
     case MMAP:
         ASSERT(false); // TODO: Implement
         break;

@@ -2,7 +2,6 @@
 #include "threads/malloc.h"
 #include <debug.h>
 
-
 static unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED)
 {
     const struct sup_pte *p = hash_entry(p_, struct sup_pte, hash_elem);
@@ -65,7 +64,7 @@ struct sup_pte *sup_pte_alloc(void *upage, bool writable, page_type type,
     pte->location = location;
 
     pte->file = NULL;
-    pte->swap_index = INT32_MAX;
+    pte->swap_index = INVALID_SWAP_INDEX;
     pte->kpage = NULL;
 
     return pte;
