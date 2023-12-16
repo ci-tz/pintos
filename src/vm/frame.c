@@ -39,7 +39,6 @@ void *palloc_get_page_frame(void)
         kpage = evict_page();
     }
     ASSERT(kpage != NULL);
-    memset(kpage, 0, PGSIZE);
     // Add the frame to the frame table.
     frame_table_entry *fte = frame_table_entry_alloc();
     ASSERT(fte != NULL);

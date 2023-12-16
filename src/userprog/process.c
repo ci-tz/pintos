@@ -714,6 +714,7 @@ bool handle_mm_fault(struct sup_pte *pte)
         palloc_free_page_frame(kpage);
         goto done;
     }
+    pagedir_set_dirty(thread_current()->pagedir, pte->upage, true);
 done:
     return success;
 }

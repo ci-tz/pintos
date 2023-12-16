@@ -181,9 +181,12 @@ static void page_fault(struct intr_frame *f)
     struct sup_page_table *spt = thread_current()->spt;
     struct sup_pte *pte = sup_pte_lookup(spt, fault_page);
     if (pte == NULL) {
-        printf("[DEBUG] Not implemented yet\n");
-        success = false;
-        // TODO: implement stack growth
+        if(need_grow_stack(fault_addr)) {
+            // TODO: implement stack growth
+        } else {
+            success = false;
+            goto done;
+        }
     }
     if (pte != NULL) {
         success = handle_mm_fault(pte);
@@ -195,7 +198,7 @@ static void page_fault(struct intr_frame *f)
 done:
     if (!success) {
         if (user) {
-            printf("[DEBUG] kill user\n");
+            // printf("[DEBUG] kill user\n");
             kill(f);
             NOT_REACHED();
         } else {
