@@ -19,7 +19,6 @@ static void frame_table_remove(frame_table *ft, frame_table_entry *fte);
 
 static void *find_evict_frame(void);
 static void *evict_page(void);
-static void write_to_disk(void *kpage, struct sup_pte *pte);
 
 static unsigned frame_hash(const struct hash_elem *e, void *aux UNUSED);
 static bool frame_less(const struct hash_elem *a, const struct hash_elem *b,
@@ -147,20 +146,6 @@ static void *find_evict_frame(void)
     }
 }
 
-static void write_to_disk(void *kpage, struct sup_pte *pte)
-{
-    pte->kpage = NULL;
-    if (pte->type == MMAP) {
-        lock_acquire(&filesys_lock);
-        file_write_at(pte->file, kpage, PGSIZE, pte->offset);
-        lock_release(&filesys_lock);
-        pte->location = IN_FILESYS;
-    } else {
-        pte->swap_index = do_swap_out(&global_swap_table, kpage);
-        ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
-        pte->location = SWAP;
-    }
-}
 
 static void *evict_page()
 {
@@ -170,25 +155,37 @@ static void *evict_page()
     frame_table_entry *fte = frame_table_find(&global_frame_table, kpage);
     ASSERT(fte != NULL && fte->pte != NULL && fte->thread != NULL);
 
-    /* Update the page table entry. */
+
     struct sup_pte *pte = fte->pte;
-    if (pagedir_is_dirty(fte->thread->pagedir, pte->upage)) {
-        write_to_disk(kpage, pte);
-    } else {
-        pte->kpage = NULL;
-        switch (pte->type) {
-        case BIN:
-        case MMAP:
+    bool is_dirty = pagedir_is_dirty(fte->thread->pagedir, pte->upage);
+
+    /* Update the page table entry. */
+    pte->kpage = NULL;
+    switch(pte->type) {
+    case BIN:
+        if(is_dirty) {
+            pte->swap_index = do_swap_out(&global_swap_table, kpage);
+            ASSERT(pte->swap_index != BITMAP_ERROR);
+            pte->location = SWAP;
+        } else {
             pte->location = IN_FILESYS;
-            break;
-        case BSS:
-        case STACK:
-            pte->location = ZERO;
-            break;
-        default:
-            NOT_REACHED();
-            break;
         }
+        break;
+    case STACK:
+        if(is_dirty) {
+            pte->swap_index = do_swap_out(&global_swap_table, kpage);
+            ASSERT(pte->swap_index != BITMAP_ERROR);
+            pte->location = SWAP;
+        } else {
+            pte->location = ZERO;
+        }
+        break;
+    case MMAP:
+        // TODO: implement mmap
+        ASSERT(false);
+        break;
+    default:
+        NOT_REACHED(); 
     }
 
     /* Update the page directory. */

@@ -128,7 +128,7 @@ static void kill(struct intr_frame *f)
 static void page_fault(struct intr_frame *f)
 {
     bool not_present; /* True: not-present page, false: writing r/o page. */
-    bool write;       /* True: access was write, false: access was read. */
+    bool write UNUSED;       /* True: access was write, false: access was read. */
     bool user;        /* True: access by user, false: access by kernel. */
     void *fault_addr; /* Fault address. */
 
@@ -211,8 +211,9 @@ done:
 }
 
 #ifdef VM
-static bool need_grow_stack(void *fault_addr)
+static bool need_grow_stack(void *fault_addr UNUSED)
 {
+    // printf("[DEBUG] stack growth not implemented\n");
     return false;
 }
 #endif

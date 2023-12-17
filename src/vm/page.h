@@ -18,8 +18,7 @@ typedef enum page_location {
 } page_location;
 
 typedef enum page_type {
-    BIN,   // text and data segment
-    BSS,   // bss segment
+    BIN,   // ELF binary
     STACK, // stack segment
     MMAP,  // memory mapped file
 } page_type;

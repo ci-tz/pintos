@@ -494,11 +494,6 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT(pg_ofs(upage) == 0);
     ASSERT(ofs % PGSIZE == 0);
 
-#ifdef VM
-    page_type type = (read_bytes == 0 ? BSS : BIN);
-    page_location location = (type == BSS ? ZERO : IN_FILESYS);
-#endif
-
     file_seek(file, ofs);
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
@@ -525,15 +520,15 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
             return false;
         }
 #else
-        struct sup_pte *pte = sup_pte_alloc(upage, writable, type, location);
-        if (pte == NULL)
+        struct sup_pte *pte = sup_pte_alloc(upage, writable, BIN, IN_FILESYS);
+        if (pte == NULL) {
             return false;
-        if (type == BIN) {
-            pte->file = file;
-            pte->offset = ofs;
-            pte->read_bytes = page_read_bytes;
-            pte->zero_bytes = page_zero_bytes;
         }
+
+        pte->file = file;
+        pte->offset = ofs;
+        pte->read_bytes = page_read_bytes;
+        pte->zero_bytes = page_zero_bytes;
         if (!sup_pte_insert(thread_current()->spt, pte)) {
             free(pte);
             return false;
@@ -560,6 +555,7 @@ static bool setup_stack(void **esp)
 #ifdef VM
     kpage = palloc_get_page_frame();
     ASSERT(kpage != NULL);
+    memset(kpage, 0, PGSIZE);
 
     struct sup_pte *pte = sup_pte_alloc(upage, true, STACK, ZERO);
     if (pte == NULL)
@@ -567,11 +563,16 @@ static bool setup_stack(void **esp)
 
     success = install_page(pte, kpage);
     if (!success) {
+        palloc_free_page_frame(kpage);
         free(pte);
         goto done;
     }
     success = sup_pte_insert(thread_current()->spt, pte);
     ASSERT(success);
+    pte->location = FRAME;
+    pte->kpage = kpage;
+    frame_refer_to_page(kpage, pte);
+
 #else
     kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     if (kpage == NULL)
@@ -611,23 +612,12 @@ static bool install_page(void *upage, void *kpage, bool writable)
 #else
 static bool install_page(struct sup_pte *pte, void *kpage)
 {
-    bool success = false;
     struct thread *t = thread_current();
 
     /* Verify that there's not already a page at that virtual
        address, then map our page there. */
-    success = (pagedir_get_page(t->pagedir, pte->upage) == NULL &&
+    return (pagedir_get_page(t->pagedir, pte->upage) == NULL &&
                pagedir_set_page(t->pagedir, pte->upage, kpage, pte->writable));
-    if (!success) {
-        goto done;
-    }
-    pte->location = FRAME;
-    pte->kpage = kpage;
-    frame_refer_to_page(kpage, pte);
-    // printf("[DEBUG] PROCESS %s: install_page: upage: %p, kpage: %p\n",
-    // thread_name(), pte->upage, kpage);
-done:
-    return success;
 }
 
 #endif
@@ -674,47 +664,50 @@ static void argument_stack(char *parse[], int count, void **esp_ptr)
 #ifdef VM
 bool handle_mm_fault(struct sup_pte *pte)
 {
-    bool success = false;
     void *kpage = palloc_get_page_frame();
     ASSERT(kpage != NULL);
-    ASSERT(pte->location != FRAME);
+    memset(kpage, 0, PGSIZE);
+
+    /* Add the page to the process's address space. */
+    bool success = install_page(pte, kpage);
+    if (!success) {
+        palloc_free_page_frame(kpage);
+        goto done;
+    }
+
+    /* Load this page. */
     switch (pte->type) {
     case BIN:
-        ASSERT(pte->location != ZERO);
-        if (pte->location == IN_FILESYS) {
+        ASSERT(pte->location == IN_FILESYS || pte->location == SWAP);
+        if(pte->location == IN_FILESYS) {
+            lock_acquire(&filesys_lock);
             file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
-        } else if (pte->location == SWAP) {
+            lock_release(&filesys_lock);
+            memset(kpage + pte->read_bytes, 0, pte->zero_bytes);
+        } else if(pte->location == SWAP) {
             ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
             do_swap_in(&global_swap_table, pte->swap_index, kpage);
-        }
-        break;
-    case BSS:
-        ASSERT(pte->location != IN_FILESYS);
-        if (pte->location == ZERO) {
-            ; /* Do nothing */
-        } else if (pte->location == SWAP) {
-            ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
-            do_swap_in(&global_swap_table, pte->swap_index, kpage);
+            pagedir_set_dirty(thread_current()->pagedir, pte->upage, true);
         }
         break;
     case STACK:
+        ASSERT(pte->location == ZERO || pte->location == SWAP);
         if (pte->location == ZERO) {
             ; /* Do nothing */
         } else if (pte->location == SWAP) {
             ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
             do_swap_in(&global_swap_table, pte->swap_index, kpage);
+            pagedir_set_dirty(thread_current()->pagedir, pte->upage, true);
         }
         break;
     case MMAP:
         ASSERT(false); // TODO: Implement
         break;
     }
-    success = install_page(pte, kpage);
-    if (!success) {
-        palloc_free_page_frame(kpage);
-        goto done;
-    }
-    pagedir_set_dirty(thread_current()->pagedir, pte->upage, true);
+    pte->location = FRAME;
+    pte->kpage = kpage;
+    /* Update the page table entry. */
+    frame_refer_to_page(kpage, pte);
 done:
     return success;
 }
