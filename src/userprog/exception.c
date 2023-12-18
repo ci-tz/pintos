@@ -10,6 +10,7 @@
 #include <debug.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include "threads/malloc.h"
 
 extern void exit(int status);
 
@@ -19,7 +20,9 @@ static long long page_fault_cnt;
 static void kill(struct intr_frame *);
 static void page_fault(struct intr_frame *);
 #ifdef VM
-static bool need_grow_stack(void *fault_addr);
+static bool need_grow_stack(void *fault_addr, void *esp);
+#define MAX_STACK_SIZE (8 * 1024 * 1024)
+struct sup_pte *add_stack_pte(void *fault_page);
 #endif
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -30,7 +33,7 @@ static bool need_grow_stack(void *fault_addr);
    signals.  Instead, we'll make them simply kill the user
    process.
 
-   Page faults are an exception.  Here they are treated the same
+   Page faults are an exception.  Here they are treated the same 
    way as other exceptions, but this will need to change to
    implement virtual memory.
 
@@ -175,25 +178,20 @@ static void page_fault(struct intr_frame *f)
     if (is_kernel_vaddr(fault_addr) || fault_addr == NULL) {
         goto done;
     }
-    /* Need to do demand paging. */
 
+    /* Need to do demand paging. */
+    void *esp = user? f->esp : thread_current()->esp;
     void *fault_page = pg_round_down(fault_addr);
+
     struct sup_page_table *spt = thread_current()->spt;
     struct sup_pte *pte = sup_pte_lookup(spt, fault_page);
+    if(pte == NULL && need_grow_stack(fault_addr, esp)) {
+        pte = add_stack_pte(fault_page);
+    }
     if (pte == NULL) {
-        if(need_grow_stack(fault_addr)) {
-            // TODO: implement stack growth
-        } else {
-            success = false;
-            goto done;
-        }
+        goto done;
     }
-    if (pte != NULL) {
-        success = handle_mm_fault(pte);
-        if(!success) {
-            printf("[DEBUG] handle mm fault failed\n");
-        }
-    }
+    success = handle_mm_fault(pte);
 
 done:
     if (!success) {
@@ -211,9 +209,23 @@ done:
 }
 
 #ifdef VM
-static bool need_grow_stack(void *fault_addr UNUSED)
+static bool need_grow_stack(void *fault_addr, void *esp)
 {
-    // printf("[DEBUG] stack growth not implemented\n");
-    return false;
+    return (fault_addr >= PHYS_BASE - MAX_STACK_SIZE) &&
+           (fault_addr >= esp - 32);
+}
+
+struct sup_pte *add_stack_pte(void *fault_page)
+{
+    struct sup_page_table *spt = thread_current()->spt;
+    struct sup_pte *pte = sup_pte_alloc(fault_page, true, STACK, ZERO);
+    if (pte == NULL) {
+        return NULL;
+    }
+    if (!sup_pte_insert(spt, pte)) {
+        free(pte);
+        return NULL;
+    }
+    return pte;
 }
 #endif

@@ -59,6 +59,9 @@ void syscall_init(void)
 static void syscall_handler(struct intr_frame *f UNUSED)
 {
     user_esp = f->esp;
+#ifdef VM
+    thread_current()->esp = user_esp;
+#endif
     int syscall_num;
 
     copy_from_user_exits(user_esp, &syscall_num, sizeof(int));

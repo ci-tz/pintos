@@ -557,9 +557,12 @@ static bool setup_stack(void **esp)
     ASSERT(kpage != NULL);
     memset(kpage, 0, PGSIZE);
 
-    struct sup_pte *pte = sup_pte_alloc(upage, true, STACK, ZERO);
+    struct sup_pte *pte = sup_pte_alloc(upage, true, STACK, FRAME);
     if (pte == NULL)
         goto done;
+    
+    pte->location = FRAME;
+    pte->kpage = kpage;
 
     success = install_page(pte, kpage);
     if (!success) {
@@ -567,10 +570,9 @@ static bool setup_stack(void **esp)
         free(pte);
         goto done;
     }
+
     success = sup_pte_insert(thread_current()->spt, pte);
     ASSERT(success);
-    pte->location = FRAME;
-    pte->kpage = kpage;
     frame_refer_to_page(kpage, pte);
 
 #else
@@ -668,7 +670,7 @@ bool handle_mm_fault(struct sup_pte *pte)
     ASSERT(kpage != NULL);
     memset(kpage, 0, PGSIZE);
 
-    /* Add the page to the process's address space. */
+    /* Update the page table entry. */
     bool success = install_page(pte, kpage);
     if (!success) {
         palloc_free_page_frame(kpage);
@@ -704,9 +706,12 @@ bool handle_mm_fault(struct sup_pte *pte)
         ASSERT(false); // TODO: Implement
         break;
     }
+
+    /* Update the supplemental page table entry. */
     pte->location = FRAME;
     pte->kpage = kpage;
-    /* Update the page table entry. */
+
+    /* Update the frame table entry. */
     frame_refer_to_page(kpage, pte);
 done:
     return success;

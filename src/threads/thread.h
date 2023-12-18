@@ -126,6 +126,7 @@ struct thread
 
 #ifdef VM
     struct sup_page_table *spt;         /* The supplemental page table of the thread. */
+    void *esp;
 #endif
 
     /* Owned by thread.c. */
