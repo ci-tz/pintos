@@ -178,8 +178,10 @@ void process_exit(void)
 
     // When the file finishes execution, call file_allow_write().
     if (cur->exec_file != NULL) {
+        lock_acquire(&filesys_lock);
         file_allow_write(cur->exec_file);
         file_close(cur->exec_file);
+        lock_release(&filesys_lock);
     }
 
     struct list_elem *e;
@@ -210,11 +212,10 @@ void process_exit(void)
         sema_up(&cur->process_info->parent_thread->wait_sema);
     }
 
-    /* Free supplemental page table, and free resources related to it. */
 #ifdef VM
+    /* Free supplemental page table, and free resources related to it. */
     sup_page_table_destroy(&cur->spt);
     remove_related_frame_table_entry(cur);
-    // TODO: free swap slot
 #endif
 
     /* Destroy the current process's page directory and switch back

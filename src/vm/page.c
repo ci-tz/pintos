@@ -1,6 +1,10 @@
 #include "vm/page.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
+#include "userprog/pagedir.h"
 #include <debug.h>
+
+extern swap_table global_swap_table;
 
 static unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED)
 {
@@ -20,19 +24,22 @@ static bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
 static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
 {
     struct sup_pte *p = hash_entry(p_, struct sup_pte, hash_elem);
-    // TODO: free resources
-
+    struct thread *t = thread_current();
+    
     switch (p->location) {
-    case IN_FILESYS:
-        break;
     case SWAP:
+        ASSERT(p->swap_index != INVALID_SWAP_INDEX);
+        swap_free(&global_swap_table, p->swap_index);
         break;
     case FRAME:
+        if (pagedir_is_dirty(t->pagedir, p->upage) && p->type == MMAP)
+        {
+            // TODO: write back the dirty mmap page to file
+        }
         break;
-    case ZERO:
+    default:
         break;
     }
-
     free(p);
 }
 
