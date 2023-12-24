@@ -6,24 +6,29 @@
 #include "filesys/file.h"
 #include "filesys/off_t.h"
 #include "vm/swap.h"
-#include <stdbool.h>
 #include <hash.h>
+#include <stdbool.h>
 #include <stdint.h>
 
-typedef enum page_location {
+#define MAX_MMAPPED_FILES (128) // Maximum number of mmapped files
+
+typedef enum page_location
+{
     IN_FILESYS, // in file system
-    SWAP,    // in swap slot
-    FRAME,   //  in physical frame
-    ZERO,    // should be zero
+    SWAP,       // in swap slot
+    FRAME,      //  in physical frame
+    ZERO,       // should be zero
 } page_location;
 
-typedef enum page_type {
+typedef enum page_type
+{
     BIN,   // ELF binary
     STACK, // stack segment
     MMAP,  // memory mapped file
 } page_type;
 
-struct sup_pte {
+struct sup_pte
+{
     void *upage;            // user virtual address
     bool writable;          // writable or not
     page_type type;         // type of page
@@ -45,7 +50,8 @@ struct sup_pte {
     struct hash_elem hash_elem;
 };
 
-struct sup_page_table {
+struct sup_page_table
+{
     struct hash page_table;
 };
 
@@ -59,5 +65,35 @@ struct sup_pte *sup_pte_alloc(void *upage, bool writable, page_type type,
 bool sup_pte_insert(struct sup_page_table *spt, struct sup_pte *pte);
 
 struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage);
+
+struct mmaped_file
+{
+    int mapid;                               // mapid
+    int sup_pte_num;                         // number of sup_pte
+    struct sup_pte *ptes[MAX_MMAPPED_FILES]; // sup_pte array
+    struct hash_elem mmap_hash_elem;         // hash element
+}
+
+struct mmaped_hash_table
+{
+    struct hash mmap_hash_table; // hash table
+    bool mapid[MAX_MMAPPED_FILES];
+}
+
+struct mmaped_hash_table *
+mmaped_hash_table_create(void);
+
+void mmaped_hash_table_destroy(struct mmaped_hash_table **table);
+
+int mmaped_file_alloc(struct mmaped_file **file_ptr);
+
+bool mmaped_file_insert(struct mmaped_hash_table *table,
+                        struct mmaped_file *file);
+
+struct mmaped_file *mmaped_file_lookup(struct mmaped_hash_table *table,
+                                       int mapid);
+
+void mmaped_file_remove(struct mmaped_hash_table *table,
+                        struct mmaped_file *file);
 
 #endif /* vm/page.h */
