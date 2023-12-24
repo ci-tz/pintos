@@ -9,8 +9,6 @@
 #include <stdbool.h>
 #include <hash.h>
 #include <stdint.h>
-#include <bitmap.h>
-#include <stddef.h>
 
 typedef enum page_location {
     IN_FILESYS, // in file system
@@ -51,13 +49,6 @@ struct sup_page_table {
     struct hash page_table;
 };
 
-struct vm_occupancy {
-    struct bitmap *vm_bitmap;
-    size_t page_num;
-    size_t page_size;
-    void *vm_base;
-};
-
 struct sup_page_table *sup_page_table_create(void);
 
 void sup_page_table_destroy(struct sup_page_table **spt);
@@ -68,23 +59,5 @@ struct sup_pte *sup_pte_alloc(void *upage, bool writable, page_type type,
 bool sup_pte_insert(struct sup_page_table *spt, struct sup_pte *pte);
 
 struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage);
-
-struct vm_occupancy *vm_occupancy_create(void *vm_base, void *vm_end,
-                                         size_t page_size);
-
-void vm_occupancy_destroy(struct vm_occupancy **occupancy);
-
-void vm_set_occupied(struct vm_occupancy *occupancy, void *upage);
-
-void vm_set_occupied_cnt(struct vm_occupancy *occupancy, void *upage,
-                         size_t page_num);
-
-void vm_set_free(struct vm_occupancy *occupancy, void *upage);
-
-void vm_set_free_cnt(struct vm_occupancy *occupancy, void *upage,
-                     size_t page_num);
-
-bool vm_check_free(struct vm_occupancy *occupancy, void *upage,
-                   size_t page_num);
 
 #endif /* vm/page.h */

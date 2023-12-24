@@ -88,13 +88,9 @@ static void start_process(void *file_name_)
          token = strtok_r(NULL, " ", &save_ptr))
         parse[count++] = token;
 
+        /* Initialize supplemental page table. */
 #ifdef VM
-    /* Initialize supplemental page table. */
     cur->spt = sup_page_table_create();
-    if (cur->spt == NULL) {
-        palloc_free_page(file_name);
-        exit(-1);
-    }
 #endif
 
     /* Initialize interrupt frame and load executable. */
