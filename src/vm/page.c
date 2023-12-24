@@ -14,14 +14,19 @@ static bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
 
 static void page_destroy(struct hash_elem *p_, void *aux UNUSED);
 
-static unsigned mmaped_hash(const struct hash_elem *m_, void *aux UNUSED);
+static unsigned map_file_hash(const struct hash_elem *m_, void *aux UNUSED);
 
-static bool mmaped_less(const struct hash_elem *a_, const struct hash_elem *b_,
-                        void *aux UNUSED);
+static bool map_file_less(const struct hash_elem *a_,
+                          const struct hash_elem *b_, void *aux UNUSED);
 
-static void mmaped_destroy(struct hash_elem *m_, void *aux UNUSED);
+static void map_file_destroy(struct hash_elem *m_, void *aux UNUSED);
 
-static int find_empty_mapid(struct mmaped_hash_table *table);
+static int find_set_empty_mapid(struct map_file_table *mft);
+
+static bool map_is_overlaps(struct sup_page_table *spt, void *upage,
+                            int num_pages);
+
+static struct map_file *map_file_alloc(int mapid);
 
 struct sup_page_table *sup_page_table_create(void)
 {
@@ -71,62 +76,138 @@ struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage)
     return e != NULL ? hash_entry(e, struct sup_pte, hash_elem) : NULL;
 }
 
-struct mmaped_hash_table *mmaped_hash_table_create(void)
+struct map_file_table *map_file_table_create(void)
 {
-    struct mmaped_hash_table *table = malloc(sizeof *table);
-    if (table == NULL)
+    struct map_file_table *mft = malloc(sizeof *mft);
+    if (mft == NULL)
         return NULL;
-    memset(table->mapid, 0, sizeof table->mapid);
-    hash_init(&table->mmap_hash_table, mmaped_hash, mmaped_less, NULL);
-    return table;
+    hash_init(&mft->map_hash, map_file_hash, map_file_less, NULL);
+    memset(mft->mapid, 0, sizeof mft->mapid);
+    return mft;
 }
 
-void mmaped_hash_table_destroy(struct mmaped_hash_table **mmaped_hash_table)
+void map_file_table_destroy(struct map_file_table *mft)
 {
-    hash_destroy(&(*mmaped_hash_table)->mmap_hash_table, mmaped_destroy);
-    free(*mmaped_hash_table);
-    *mmaped_hash_table = NULL;
+    hash_destroy(&mft->map_hash, map_file_destroy);
+    free(mft);
 }
 
-int mmaped_file_alloc(struct mmaped_file **file_ptr)
+static bool map_is_overlaps(struct sup_page_table *spt, void *upage,
+                            int num_pages)
 {
-    struct mmaped_file *file = malloc(sizeof *file);
-    if (file == NULL)
-        return -1;
-    file->mapid = find_empty_mapid(&thread_current()->mmaped_hash_table);
-    if (file->mapid == -1)
+    ASSERT(pg_ofs(upage) == 0);
+    ASSERT(num_pages > 0);
+    for (int i = 0; i < num_pages; i++)
     {
-        free(file);
-        return -1;
+        struct sup_pte *pte = sup_pte_lookup(spt, upage + i * PGSIZE);
+        if (pte != NULL)
+            return true;
     }
+    return false;
+}
+
+bool do_mmap(int fd, void *addr)
+{
+    // Check validity of fd and addr
+    if (fd == 0 || fd == 1 || addr == 0 || pg_ofs(addr) != 0)
+        return false;
+
+    struct thread *t = thread_current();
+    struct file *file = t->fdt[fd];
+    if (file == NULL)
+        return false;
+
+    off_t file_size = file_length(file);
+    if (file_size == 0)
+        return false;
+
+    struct sup_page_table *spt = t->spt;
+    int num_pages = (file_size + PGSIZE - 1) / PGSIZE;
+    if (map_is_overlaps(spt, addr, num_pages))
+        return false;
+
+    // All checks passed, do the real mmap
+    struct map_file *mfile = NULL;
+    struct sup_pte **ptes = NULL;
+    struct map_file_table *mft = t->mft;
+
+    int mapid = find_set_empty_mapid(mft);
+    if (mapid == -1)
+        return false;
+
+    mfile = map_file_alloc(mapid);
+    if (mfile == NULL)
+        goto error;
+
+    void *upage = addr;
+    ptes = calloc(num_pages, sizeof *ptes);
+    if (ptes == NULL)
+        goto error;
+
+    for (int i = 0; i < num_pages; i++)
+    {
+        struct sup_pte *pte = sup_pte_alloc(upage, true, MMAP, IN_FILESYS);
+        if (pte == NULL)
+            goto error;
+
+        pte->file = file;
+        pte->offset = i * PGSIZE;
+        pte->read_bytes = i == num_pages - 1 ? file_size % PGSIZE : PGSIZE;
+        pte->zero_bytes = PGSIZE - pte->read_bytes;
+        ptes[i] = pte;
+        upage += PGSIZE;
+    }
+
+    for (int i = 0; i < num_pages; i++)
+    {
+        ASSERT(sup_pte_insert(spt, ptes[i]));
+    }
+
+    mfile->sup_pte_num = num_pages;
+    memcpy(mfile->ptes, ptes, num_pages * sizeof *ptes);
+    ASSERT(hash_insert(&mft->map_hash, &mfile->map_hash_elem) == NULL);
+    free(ptes);
+    return true;
+
+error:
+    if (mfile != NULL)
+        free(mfile);
+
+    if (ptes != NULL)
+    {
+        for (int i = 0; i < num_pages; i++)
+        {
+            if (ptes[i] != NULL)
+                free(ptes[i]);
+        }
+        free(ptes);
+    }
+    return false;
+}
+
+static int find_set_empty_mapid(struct map_file_table *mft)
+{
+    int i;
+    for (i = 0; i < MAX_MMAPPED_FILES; i++)
+    {
+        if (!mft->mapid[i])
+        {
+            mft->mapid[i] = true;
+            return i;
+        }
+    }
+    return -1;
+}
+
+struct map_file *map_file_alloc(int mapid)
+{
+    struct map_file *file = malloc(sizeof *file);
+    if (file == NULL)
+        return NULL;
+    file->mapid = mapid;
     file->sup_pte_num = 0;
     memset(file->ptes, 0, sizeof file->ptes);
-    *file_ptr = file;
-    return file->mapid;
-}
-
-bool mmaped_file_insert(struct mmaped_hash_table *table,
-                        struct mmaped_file *file)
-{
-    struct hash_elem *e =
-        hash_insert(&table->mmap_hash_table, &file->mmap_hash_elem);
-    return e == NULL;
-}
-
-struct mmaped_file *mmaped_file_lookup(struct mmaped_hash_table *table,
-                                       int mapid)
-{
-    struct mmaped_file file;
-    file.mapid = mapid;
-    struct hash_elem *e =
-        hash_find(&table->mmap_hash_table, &file.mmap_hash_elem);
-    return e != NULL ? hash_entry(e, struct mmaped_file, mmap_hash_elem) : NULL;
-}
-
-void mmaped_file_remove(struct mmaped_hash_table *table,
-                        struct mmaped_file *file)
-{
-    hash_delete(&table->mmap_hash_table, &file->mmap_hash_elem);
+    return file;
 }
 
 static unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED)
@@ -158,7 +239,7 @@ static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
     case FRAME:
         if (pagedir_is_dirty(t->pagedir, p->upage) && p->type == MMAP)
         {
-            // TODO: write back the dirty mmap page to file
+            // TODO: write back the dirty map page to file
         }
         break;
     default:
@@ -167,39 +248,24 @@ static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
     free(p);
 }
 
-static unsigned mmaped_hash(const struct hash_elem *m_, void *aux UNUSED)
+static unsigned map_file_hash(const struct hash_elem *m_, void *aux UNUSED)
 {
-    const struct mmaped_file *m =
-        hash_entry(m_, struct mmaped_file, mmap_hash_elem);
-    return hash_bytes(&m->mapid, sizeof m->mapid);
+    const struct map_file *m = hash_entry(m_, struct map_file, map_hash_elem);
+    return hash_int(m->mapid);
 }
 
-static bool mmaped_less(const struct hash_elem *a_, const struct hash_elem *b_,
-                        void *aux UNUSED)
+static bool map_file_less(const struct hash_elem *a_,
+                          const struct hash_elem *b_, void *aux UNUSED)
 {
-    const struct mmaped_file *a =
-        hash_entry(a_, struct mmaped_file, mmap_hash_elem);
-    const struct mmaped_file *b =
-        hash_entry(b_, struct mmaped_file, mmap_hash_elem);
-
+    const struct map_file *a = hash_entry(a_, struct map_file, map_hash_elem);
+    const struct map_file *b = hash_entry(b_, struct map_file, map_hash_elem);
     return a->mapid < b->mapid;
 }
 
-static void mmaped_destroy(struct hash_elem *m_, void *aux UNUSED)
+static void map_file_destroy(struct hash_elem *m_, void *aux UNUSED)
 {
-    struct mmaped_file *m = hash_entry(m_, struct mmaped_file, mmap_hash_elem);
-    /* Just free the mmaped_file struct, the sup_pte will be freed by
-     * page_destroy */
+    struct map_file *m = hash_entry(m_, struct map_file, map_hash_elem);
+    /* Just free the map_file struct, the sup_pte will be freed by
+     * page_destroy() */
     free(m);
-}
-
-static int find_empty_mapid(struct mmaped_hash_table *table)
-{
-    int i;
-    for (i = 0; i < MAX_MMAPPED_FILES; i++)
-    {
-        if (table->mapid[i] == 0)
-            return i + 1;
-    }
-    return -1;
 }

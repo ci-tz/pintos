@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MAX_MMAPPED_FILES (128) // Maximum number of mmapped files
+#define MAX_MMAPPED_FILES (128) // Maximum number of mapped files
 
 typedef enum page_location
 {
@@ -66,34 +66,25 @@ bool sup_pte_insert(struct sup_page_table *spt, struct sup_pte *pte);
 
 struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage);
 
-struct mmaped_file
+struct map_file
 {
     int mapid;                               // mapid
     int sup_pte_num;                         // number of sup_pte
     struct sup_pte *ptes[MAX_MMAPPED_FILES]; // sup_pte array
-    struct hash_elem mmap_hash_elem;         // hash element
-}
+    struct hash_elem map_hash_elem;          // hash element
+};
 
-struct mmaped_hash_table
+struct map_file_table
 {
-    struct hash mmap_hash_table; // hash table
+    struct hash map_hash; // hash table
     bool mapid[MAX_MMAPPED_FILES];
-}
+};
 
-struct mmaped_hash_table *
-mmaped_hash_table_create(void);
+struct map_file_table *map_file_table_create(void);
 
-void mmaped_hash_table_destroy(struct mmaped_hash_table **table);
+void map_file_table_destroy(struct map_file_table *mft);
 
-int mmaped_file_alloc(struct mmaped_file **file_ptr);
+bool do_mmap(int fd, void *addr);
 
-bool mmaped_file_insert(struct mmaped_hash_table *table,
-                        struct mmaped_file *file);
-
-struct mmaped_file *mmaped_file_lookup(struct mmaped_hash_table *table,
-                                       int mapid);
-
-void mmaped_file_remove(struct mmaped_hash_table *table,
-                        struct mmaped_file *file);
 
 #endif /* vm/page.h */
