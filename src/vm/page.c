@@ -104,14 +104,18 @@ struct map_file_table *map_file_table_create(void)
     struct map_file_table *mft = malloc(sizeof *mft);
     if (mft == NULL)
         return NULL;
-    hash_init(&mft->map_hash, map_file_hash, map_file_less, NULL);
+    hash_init(&mft->map_file_hash, map_file_hash, map_file_less, NULL);
+    hash_init(&mft->sup_pte_hash, page_hash, page_less, NULL);
+    mft->map_file_cnt = 0;
+    mft->sup_pte_cnt = 0;
     memset(mft->mapid, 0, sizeof mft->mapid);
     return mft;
 }
 
 void map_file_table_destroy(struct map_file_table *mft)
 {
-    hash_destroy(&mft->map_hash, map_file_destroy);
+    hash_destroy(&mft->map_file_hash, map_file_destroy);
+    hash_destroy(&mft->sup_pte_hash, NULL); // sup_ptes are freed by munmap
     free(mft);
 }
 
@@ -324,21 +328,21 @@ static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
 
 static unsigned map_file_hash(const struct hash_elem *m_, void *aux UNUSED)
 {
-    const struct map_file *m = hash_entry(m_, struct map_file, map_hash_elem);
+    const struct map_file *m = hash_entry(m_, struct map_file, map_file_hash_elem);
     return hash_int(m->mapid);
 }
 
 static bool map_file_less(const struct hash_elem *a_,
                           const struct hash_elem *b_, void *aux UNUSED)
 {
-    const struct map_file *a = hash_entry(a_, struct map_file, map_hash_elem);
-    const struct map_file *b = hash_entry(b_, struct map_file, map_hash_elem);
+    const struct map_file *a = hash_entry(a_, struct map_file, map_file_hash_elem);
+    const struct map_file *b = hash_entry(b_, struct map_file, map_file_hash_elem);
     return a->mapid < b->mapid;
 }
 
 static void map_file_destroy(struct hash_elem *m_, void *aux UNUSED)
 {
-    struct map_file *m = hash_entry(m_, struct map_file, map_hash_elem);
+    struct map_file *m = hash_entry(m_, struct map_file, map_file_hash_elem);
     do_munmap(m->mapid);
     free(m);
 }

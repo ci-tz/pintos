@@ -49,6 +49,8 @@ struct sup_pte
 
     // for hash table
     struct hash_elem hash_elem;
+    // for list
+    struct list_elem list_elem;
 };
 
 struct sup_page_table
@@ -71,15 +73,21 @@ struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage);
 
 struct map_file
 {
-    int mapid;                               // mapid
-    int sup_pte_num;                         // number of sup_pte
-    struct sup_pte *ptes[MAX_MMAPPED_FILES]; // sup_pte array
-    struct hash_elem map_hash_elem;          // hash element
+    int mapid;                // mapid
+    int sup_pte_num;          // number of sup_pte
+    struct file *file;        // file pointer
+    struct list sup_pte_list; // list of sup_pte
+
+    // linked to hash table
+    struct hash_elem map_file_hash_elem; // hash element
 };
 
 struct map_file_table
 {
-    struct hash map_hash; // hash table
+    struct hash map_file_hash;
+    struct hash sup_pte_hash;
+    int map_file_cnt;
+    int sup_pte_cnt;
     bool mapid[MAX_MMAPPED_FILES];
 };
 
