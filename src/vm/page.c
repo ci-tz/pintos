@@ -1,4 +1,5 @@
 #include "vm/page.h"
+#include "vm/frame.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
@@ -6,6 +7,8 @@
 #include <string.h>
 
 extern swap_table global_swap_table;
+
+extern struct lock filesys_lock;
 
 static unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED);
 
@@ -27,6 +30,20 @@ static bool map_is_overlaps(struct sup_page_table *spt, void *upage,
                             int num_pages);
 
 static struct map_file *map_file_alloc(int mapid);
+
+static struct map_file *map_file_lookup(struct map_file_table *mft, int mapid);
+
+static bool map_file_insert(struct map_file_table *mft, struct map_file *mfile)
+{
+    struct hash_elem *e = hash_insert(&mft->map_hash, &mfile->map_hash_elem);
+    return e == NULL;
+}
+
+static bool map_file_remove(struct map_file_table *mft, struct map_file *mfile)
+{
+    struct hash_elem *e = hash_delete(&mft->map_hash, &mfile->map_hash_elem);
+    return e != NULL;
+}
 
 struct sup_page_table *sup_page_table_create(void)
 {
@@ -68,6 +85,12 @@ bool sup_pte_insert(struct sup_page_table *spt, struct sup_pte *pte)
     return e == NULL;
 }
 
+bool sup_pte_remove(struct sup_page_table *spt, struct sup_pte *pte)
+{
+    struct hash_elem *e = hash_delete(&spt->page_table, &pte->hash_elem);
+    return e != NULL;
+}
+
 struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage)
 {
     struct sup_pte pte;
@@ -106,34 +129,37 @@ static bool map_is_overlaps(struct sup_page_table *spt, void *upage,
     return false;
 }
 
-bool do_mmap(int fd, void *addr)
+int do_mmap(int fd, void *addr)
 {
     // Check validity of fd and addr
     if (fd == 0 || fd == 1 || addr == 0 || pg_ofs(addr) != 0)
-        return false;
+        return -1;
 
     struct thread *t = thread_current();
     struct file *file = t->fdt[fd];
     if (file == NULL)
-        return false;
+        return -1;
 
     off_t file_size = file_length(file);
     if (file_size == 0)
-        return false;
+        return -1;
 
     struct sup_page_table *spt = t->spt;
     int num_pages = (file_size + PGSIZE - 1) / PGSIZE;
     if (map_is_overlaps(spt, addr, num_pages))
-        return false;
+        return -1;
 
     // All checks passed, do the real mmap
     struct map_file *mfile = NULL;
     struct sup_pte **ptes = NULL;
     struct map_file_table *mft = t->mft;
+    struct file *file_copy = file_reopen(file);
+    if (file_copy == NULL)
+        return -1;
 
     int mapid = find_set_empty_mapid(mft);
     if (mapid == -1)
-        return false;
+        return -1;
 
     mfile = map_file_alloc(mapid);
     if (mfile == NULL)
@@ -150,12 +176,13 @@ bool do_mmap(int fd, void *addr)
         if (pte == NULL)
             goto error;
 
-        pte->file = file;
+        pte->file = file_copy;
         pte->offset = i * PGSIZE;
         pte->read_bytes = i == num_pages - 1 ? file_size % PGSIZE : PGSIZE;
         pte->zero_bytes = PGSIZE - pte->read_bytes;
+        pte->last_page = i == num_pages - 1;
         ptes[i] = pte;
-        upage += PGSIZE;
+        upage = (uint8_t *)upage + PGSIZE;
     }
 
     for (int i = 0; i < num_pages; i++)
@@ -165,9 +192,9 @@ bool do_mmap(int fd, void *addr)
 
     mfile->sup_pte_num = num_pages;
     memcpy(mfile->ptes, ptes, num_pages * sizeof *ptes);
-    ASSERT(hash_insert(&mft->map_hash, &mfile->map_hash_elem) == NULL);
+    ASSERT(map_file_insert(mft, mfile));
     free(ptes);
-    return true;
+    return mapid;
 
 error:
     if (mfile != NULL)
@@ -182,7 +209,43 @@ error:
         }
         free(ptes);
     }
-    return false;
+    return -1;
+}
+
+void do_munmap(int mapid)
+{
+    struct thread *t = thread_current();
+    struct map_file_table *mft = t->mft;
+
+    struct map_file *mfile = map_file_lookup(mft, mapid);
+    if (mfile == NULL)
+        return;
+    
+    struct sup_page_table *spt = t->spt;
+    struct sup_pte **ptes = mfile->ptes;
+    int num_pages = mfile->sup_pte_num;
+    struct file *file = ptes[0]->file;
+    for(int i = 0; i < num_pages; i++)
+    {
+        struct sup_pte *pte = ptes[i];
+        if(pte->location == FRAME)
+        {
+            if(pagedir_is_dirty(t->pagedir, pte->upage))
+            {
+                lock_acquire(&filesys_lock);
+                file_write_at(file, pte->kpage, pte->read_bytes, pte->offset);
+                lock_release(&filesys_lock);
+            }
+            pagedir_clear_page(t->pagedir, pte->upage);
+            palloc_free_page_frame(pte->kpage);
+        }
+
+        sup_pte_remove(spt, pte);
+        free(pte);
+    }
+    ASSERT(map_file_remove(mft, mfile));
+    file_close(file);
+    free(mfile);
 }
 
 static int find_set_empty_mapid(struct map_file_table *mft)
@@ -208,6 +271,14 @@ struct map_file *map_file_alloc(int mapid)
     file->sup_pte_num = 0;
     memset(file->ptes, 0, sizeof file->ptes);
     return file;
+}
+
+static struct map_file *map_file_lookup(struct map_file_table *mft, int mapid)
+{
+    struct map_file file;
+    file.mapid = mapid;
+    struct hash_elem *e = hash_find(&mft->map_hash, &file.map_hash_elem);
+    return e != NULL ? hash_entry(e, struct map_file, map_hash_elem) : NULL;
 }
 
 static unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED)
@@ -237,9 +308,12 @@ static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
         swap_free(&global_swap_table, p->swap_index);
         break;
     case FRAME:
+        // TODO: should mmaped file page be written back to file there?
         if (pagedir_is_dirty(t->pagedir, p->upage) && p->type == MMAP)
         {
-            // TODO: write back the dirty map page to file
+            lock_acquire(&filesys_lock);
+            file_write_at(p->file, p->kpage, p->read_bytes, p->offset);
+            lock_release(&filesys_lock);
         }
         break;
     default:
@@ -265,7 +339,6 @@ static bool map_file_less(const struct hash_elem *a_,
 static void map_file_destroy(struct hash_elem *m_, void *aux UNUSED)
 {
     struct map_file *m = hash_entry(m_, struct map_file, map_hash_elem);
-    /* Just free the map_file struct, the sup_pte will be freed by
-     * page_destroy() */
+    do_munmap(m->mapid);
     free(m);
 }

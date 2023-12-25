@@ -91,6 +91,7 @@ static void start_process(void *file_name_)
         /* Initialize supplemental page table. */
 #ifdef VM
     cur->spt = sup_page_table_create();
+    cur->mft = map_file_table_create();
 #endif
 
     /* Initialize interrupt frame and load executable. */
@@ -216,6 +217,9 @@ void process_exit(void)
     /* Free supplemental page table, and free resources related to it. */
     sup_page_table_destroy(&cur->spt);
     remove_related_frame_table_entry(cur);
+
+    /* Free mmap file table, and free resources related to it. */
+    map_file_table_destroy(cur->mft);
 #endif
 
     /* Destroy the current process's page directory and switch back
@@ -704,8 +708,16 @@ bool handle_mm_fault(struct sup_pte *pte)
         }
         break;
     case MMAP:
-        ASSERT(false); // TODO: Implement
+        ASSERT(pte->location == IN_FILESYS);
+        lock_acquire(&filesys_lock);
+        off_t bytes_read =
+            file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
+        lock_release(&filesys_lock);
+        ASSERT(bytes_read == (off_t)pte->read_bytes);
+        memset(kpage + pte->read_bytes, 0, pte->zero_bytes);
         break;
+    default:
+        NOT_REACHED();
     }
 
     /* Update the supplemental page table entry. */

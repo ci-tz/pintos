@@ -53,7 +53,6 @@ void palloc_free_page_frame(void *kpage)
     if (fte == NULL) {
         return;
     }
-    // TODO: Should i need to uninstall the page?
     frame_table_remove(&global_frame_table, fte);
     palloc_free_page(kpage);
     free(fte);
@@ -181,8 +180,12 @@ static void *evict_page()
         }
         break;
     case MMAP:
-        // TODO: implement mmap
-        ASSERT(false);
+        if(is_dirty) {
+            lock_acquire(&filesys_lock);
+            file_write_at(pte->file, kpage, pte->read_bytes, pte->offset);
+            lock_release(&filesys_lock);
+            pte->location = IN_FILESYS;
+        }
         break;
     default:
         NOT_REACHED(); 

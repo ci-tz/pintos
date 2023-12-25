@@ -39,6 +39,7 @@ struct sup_pte
     off_t offset;        // offset in file
     uint32_t read_bytes; // bytes to read
     uint32_t zero_bytes; // bytes to zero
+    bool last_page;      // last page or not
 
     // for page in swap slot
     swap_index_t swap_index; // index of swap slot
@@ -64,6 +65,8 @@ struct sup_pte *sup_pte_alloc(void *upage, bool writable, page_type type,
 
 bool sup_pte_insert(struct sup_page_table *spt, struct sup_pte *pte);
 
+bool sup_pte_remove(struct sup_page_table *spt, struct sup_pte *pte);
+
 struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage);
 
 struct map_file
@@ -84,7 +87,9 @@ struct map_file_table *map_file_table_create(void);
 
 void map_file_table_destroy(struct map_file_table *mft);
 
-bool do_mmap(int fd, void *addr);
+int do_mmap(int fd, void *addr);
+
+void do_munmap(int mapid);
 
 
 #endif /* vm/page.h */

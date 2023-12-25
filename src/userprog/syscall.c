@@ -11,6 +11,7 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "vm/page.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <syscall-nr.h>
@@ -152,6 +153,20 @@ static void syscall_handler(struct intr_frame *f UNUSED)
         int fd;
         copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
         close(fd);
+        break;
+    }
+    case SYS_MMAP: {
+        int fd;
+        void *addr;
+        copy_from_user_exits(user_esp + 4, &fd, sizeof(int));
+        copy_from_user_exits(user_esp + 8, &addr, sizeof(int));
+        f->eax = do_mmap(fd, addr);
+        break;
+    }
+    case SYS_MUNMAP: {
+        int mapid;
+        copy_from_user_exits(user_esp + 4, &mapid, sizeof(int));
+        do_munmap(mapid);
         break;
     }
     default:

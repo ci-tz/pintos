@@ -28,6 +28,7 @@ typedef struct frame_table {
 void frame_table_init(frame_table *ft);
 
 void *palloc_get_page_frame(void);
+
 void palloc_free_page_frame(void *kpage);
 
 void frame_refer_to_page(void *kpage, struct sup_pte *pte);

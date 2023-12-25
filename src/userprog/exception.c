@@ -155,22 +155,7 @@ static void page_fault(struct intr_frame *f)
     not_present = (f->error_code & PF_P) == 0;
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
-#ifndef VM
-    /* The only chance that a page fault happens in kernel context is when
-      dealing with user-provided pointer through system call. In order to
-      support get_user and put_user, a page fault in the kernel merely sets eax
-      to 0xffffffff and copies its former value into eip.*/
-    if (!user) {
-        f->eip = (void *)f->eax;
-        f->eax = -1;
-        return;
-    }
-    /* Page fault can't be handled - kill the process */
-    printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
-           not_present ? "not present" : "rights violation",
-           write ? "writing" : "reading", user ? "user" : "kernel");
-    kill(f);
-#else
+#ifdef VM
     bool success = false;
     if (!not_present) {
         goto done;
@@ -205,6 +190,22 @@ done:
         }
     }
     return;
+
+#else
+    /* The only chance that a page fault happens in kernel context is when
+      dealing with user-provided pointer through system call. In order to
+      support get_user and put_user, a page fault in the kernel merely sets eax
+      to 0xffffffff and copies its former value into eip.*/
+    if (!user) {
+        f->eip = (void *)f->eax;
+        f->eax = -1;
+        return;
+    }
+    /* Page fault can't be handled - kill the process */
+    printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
+           not_present ? "not present" : "rights violation",
+           write ? "writing" : "reading", user ? "user" : "kernel");
+    kill(f);
 #endif
 }
 
