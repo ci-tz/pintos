@@ -16,6 +16,7 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "vm/swap.h"
+#include "vm/mmap.h"
 #endif
 #include <debug.h>
 #include <inttypes.h>
@@ -215,7 +216,7 @@ void process_exit(void)
 
 #ifdef VM
     /* Free supplemental page table, and free resources related to it. */
-    sup_page_table_destroy(&cur->spt);
+    sup_page_table_destroy(cur->spt);
     remove_related_frame_table_entry(cur);
 
     /* Free mmap file table, and free resources related to it. */

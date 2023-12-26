@@ -11,7 +11,10 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+#ifdef VM
 #include "vm/page.h"
+#include "vm/mmap.h"
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <syscall-nr.h>
