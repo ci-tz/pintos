@@ -14,9 +14,9 @@
 #include "userprog/tss.h"
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/mmap.h"
 #include "vm/page.h"
 #include "vm/swap.h"
-#include "vm/mmap.h"
 #endif
 #include <debug.h>
 #include <inttypes.h>
@@ -89,7 +89,6 @@ static void start_process(void *file_name_)
          token = strtok_r(NULL, " ", &save_ptr))
         parse[count++] = token;
 
-        /* Initialize supplemental page table. */
 #ifdef VM
     cur->spt = sup_page_table_create();
     cur->mft = map_file_table_create();
@@ -566,7 +565,7 @@ static bool setup_stack(void **esp)
     struct sup_pte *pte = sup_pte_alloc(upage, true, STACK, FRAME);
     if (pte == NULL)
         goto done;
-    
+
     pte->location = FRAME;
     pte->kpage = kpage;
 
@@ -625,7 +624,7 @@ static bool install_page(struct sup_pte *pte, void *kpage)
     /* Verify that there's not already a page at that virtual
        address, then map our page there. */
     return (pagedir_get_page(t->pagedir, pte->upage) == NULL &&
-               pagedir_set_page(t->pagedir, pte->upage, kpage, pte->writable));
+            pagedir_set_page(t->pagedir, pte->upage, kpage, pte->writable));
 }
 
 #endif
@@ -687,12 +686,12 @@ bool handle_mm_fault(struct sup_pte *pte)
     switch (pte->type) {
     case BIN:
         ASSERT(pte->location == IN_FILESYS || pte->location == SWAP);
-        if(pte->location == IN_FILESYS) {
+        if (pte->location == IN_FILESYS) {
             lock_acquire(&filesys_lock);
             file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
             lock_release(&filesys_lock);
             memset(kpage + pte->read_bytes, 0, pte->zero_bytes);
-        } else if(pte->location == SWAP) {
+        } else if (pte->location == SWAP) {
             ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
             do_swap_in(&global_swap_table, pte->swap_index, kpage);
             pagedir_set_dirty(thread_current()->pagedir, pte->upage, true);
@@ -711,10 +710,8 @@ bool handle_mm_fault(struct sup_pte *pte)
     case MMAP:
         ASSERT(pte->location == IN_FILESYS);
         lock_acquire(&filesys_lock);
-        off_t bytes_read =
-            file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
+        file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
         lock_release(&filesys_lock);
-        ASSERT(bytes_read == (off_t)pte->read_bytes);
         memset(kpage + pte->read_bytes, 0, pte->zero_bytes);
         break;
     default:

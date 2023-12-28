@@ -69,6 +69,30 @@ struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage)
     return e != NULL ? hash_entry(e, struct sup_pte, hash_elem) : NULL;
 }
 
+struct sup_pte *need_grow_stack(struct thread *t, void *fault_addr, void *esp)
+{
+    bool need_grow =
+        (fault_addr <= PHYS_BASE) &&
+        (fault_addr >= (void *)((uint8_t *)esp - 32)) &&
+        (fault_addr >= (void *)((uint8_t *)PHYS_BASE - MAX_STACK_SIZE));
+
+    if (need_grow) {
+        struct sup_page_table *spt = t->spt;
+        void *fault_page = pg_round_down(fault_addr);
+        struct sup_pte *pte = sup_pte_alloc(fault_page, true, STACK, ZERO);
+        if (pte == NULL) {
+            return NULL;
+        }
+        if (!sup_pte_insert(spt, pte)) {
+            free(pte);
+            return NULL;
+        }
+        return pte;
+    } else {
+        return NULL;
+    }
+}
+
 static unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED)
 {
     const struct sup_pte *p = hash_entry(p_, struct sup_pte, hash_elem);
@@ -87,14 +111,12 @@ static bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
 static void page_destroy(struct hash_elem *p_, void *aux UNUSED)
 {
     struct sup_pte *p = hash_entry(p_, struct sup_pte, hash_elem);
-
-    switch (p->location) {
-    case SWAP:
+    /* MMAP sup_pte is not freed here. */
+    ASSERT(p->type != MMAP);
+    /* Free the occupied swap slot. */
+    if (p->location == SWAP) {
         ASSERT(p->swap_index != INVALID_SWAP_INDEX);
         swap_free(&global_swap_table, p->swap_index);
-        break;
-    default:
-        break;
     }
     free(p);
 }

@@ -1,16 +1,19 @@
 #include "userprog/exception.h"
 #include "filesys/file.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/gdt.h"
 #include "userprog/process.h"
+#ifdef VM
 #include "vm/page.h"
+#include "vm/mmap.h"
+#endif
 #include <debug.h>
 #include <inttypes.h>
 #include <stdio.h>
-#include "threads/malloc.h"
 
 extern void exit(int status);
 
@@ -19,11 +22,6 @@ static long long page_fault_cnt;
 
 static void kill(struct intr_frame *);
 static void page_fault(struct intr_frame *);
-#ifdef VM
-static bool need_grow_stack(void *fault_addr, void *esp);
-#define MAX_STACK_SIZE (8 * 1024 * 1024)
-struct sup_pte *add_stack_pte(void *fault_page);
-#endif
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -33,7 +31,7 @@ struct sup_pte *add_stack_pte(void *fault_page);
    signals.  Instead, we'll make them simply kill the user
    process.
 
-   Page faults are an exception.  Here they are treated the same 
+   Page faults are an exception.  Here they are treated the same
    way as other exceptions, but this will need to change to
    implement virtual memory.
 
@@ -130,10 +128,10 @@ static void kill(struct intr_frame *f)
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void page_fault(struct intr_frame *f)
 {
-    bool not_present; /* True: not-present page, false: writing r/o page. */
-    bool write UNUSED;       /* True: access was write, false: access was read. */
-    bool user;        /* True: access by user, false: access by kernel. */
-    void *fault_addr; /* Fault address. */
+    bool not_present;  /* True: not-present page, false: writing r/o page. */
+    bool write UNUSED; /* True: access was write, false: access was read. */
+    bool user;         /* True: access by user, false: access by kernel. */
+    void *fault_addr;  /* Fault address. */
 
     /* Obtain faulting address, the virtual address that was
        accessed to cause the fault.  It may point to code or to
@@ -165,13 +163,17 @@ static void page_fault(struct intr_frame *f)
     }
 
     /* Need to do demand paging. */
-    void *esp = user? f->esp : thread_current()->esp;
+    struct thread *t = thread_current();
+    void *esp = user ? f->esp : t->esp;
     void *fault_page = pg_round_down(fault_addr);
 
-    struct sup_page_table *spt = thread_current()->spt;
+    struct sup_page_table *spt = t->spt;
     struct sup_pte *pte = sup_pte_lookup(spt, fault_page);
-    if(pte == NULL && need_grow_stack(fault_addr, esp)) {
-        pte = add_stack_pte(fault_page);
+    if (pte == NULL) {
+        pte = need_grow_stack(t, fault_addr, esp);
+        if (pte == NULL) {
+            pte = is_mmaped_page(t, fault_page);
+        }
     }
     if (pte == NULL) {
         goto done;
@@ -208,25 +210,3 @@ done:
     kill(f);
 #endif
 }
-
-#ifdef VM
-static bool need_grow_stack(void *fault_addr, void *esp)
-{
-    return (fault_addr >= PHYS_BASE - MAX_STACK_SIZE) &&
-           (fault_addr >= esp - 32);
-}
-
-struct sup_pte *add_stack_pte(void *fault_page)
-{
-    struct sup_page_table *spt = thread_current()->spt;
-    struct sup_pte *pte = sup_pte_alloc(fault_page, true, STACK, ZERO);
-    if (pte == NULL) {
-        return NULL;
-    }
-    if (!sup_pte_insert(spt, pte)) {
-        free(pte);
-        return NULL;
-    }
-    return pte;
-}
-#endif

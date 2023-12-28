@@ -5,28 +5,28 @@
 
 #include "filesys/file.h"
 #include "filesys/off_t.h"
+#include "threads/vaddr.h"
 #include "vm/swap.h"
 #include <hash.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum page_location
-{
+#define MAX_STACK_SIZE (8 * 1024 * 1024)
+
+typedef enum page_location {
     IN_FILESYS, // in file system
     SWAP,       // in swap slot
     FRAME,      //  in physical frame
     ZERO,       // should be zero
 } page_location;
 
-typedef enum page_type
-{
+typedef enum page_type {
     BIN,   // ELF binary
     STACK, // stack segment
     MMAP,  // memory mapped file
 } page_type;
 
-struct sup_pte
-{
+struct sup_pte {
     void *upage;            // user virtual address
     bool writable;          // writable or not
     page_type type;         // type of page
@@ -50,8 +50,7 @@ struct sup_pte
     struct list_elem list_elem;
 };
 
-struct sup_page_table
-{
+struct sup_page_table {
     struct hash page_table;
 };
 
@@ -67,5 +66,7 @@ bool sup_pte_insert(struct sup_page_table *spt, struct sup_pte *pte);
 bool sup_pte_remove(struct sup_page_table *spt, struct sup_pte *pte);
 
 struct sup_pte *sup_pte_lookup(struct sup_page_table *spt, void *upage);
+
+struct sup_pte *need_grow_stack(struct thread *t, void *fault_addr, void *esp);
 
 #endif /* vm/page.h */
