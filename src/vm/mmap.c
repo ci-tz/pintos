@@ -119,6 +119,7 @@ int do_mmap(int fd, void *addr)
         goto error;
 
     void *upage = addr;
+    off_t file_left_bytes = file_size;
     for (int i = 0; i < num_pages; i++) {
         struct sup_pte *pte = sup_pte_alloc(upage, true, MMAP, IN_FILESYS);
         if (pte == NULL)
@@ -126,10 +127,11 @@ int do_mmap(int fd, void *addr)
 
         pte->file = file_copy;
         pte->offset = i * PGSIZE;
-        pte->read_bytes = i == num_pages - 1 ? file_size % PGSIZE : PGSIZE;
+        pte->read_bytes = file_left_bytes >= PGSIZE ? PGSIZE : file_left_bytes;
         pte->zero_bytes = PGSIZE - pte->read_bytes;
         pte_array[i] = pte;
         upage = (uint8_t *)upage + PGSIZE;
+        file_left_bytes -= pte->read_bytes;
     }
 
     for (int i = 0; i < num_pages; i++) {
