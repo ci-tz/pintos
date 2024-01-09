@@ -183,7 +183,6 @@ static void page_fault(struct intr_frame *f)
 done:
     if (!success) {
         if (user) {
-            // printf("[DEBUG] kill user\n");
             kill(f);
             NOT_REACHED();
         } else {

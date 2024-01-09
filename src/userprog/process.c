@@ -109,14 +109,6 @@ static void start_process(void *file_name_)
         exit(-1);
     }
     /* Load success */
-    lock_acquire(&filesys_lock);
-    struct file *file = filesys_open(parse[0]);
-    if (file != NULL) {
-        cur->exec_file = file;
-        file_deny_write(file);
-    }
-    lock_release(&filesys_lock);
-
     cur->process_info->parent_thread->load_success = true;
     sema_up(&cur->process_info->parent_thread->load_sema);
 
@@ -418,11 +410,16 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     /* Start address. */
     *eip = (void (*)(void))ehdr.e_entry;
 
+    /* Deny writes to executables. */
+    lock_acquire(&filesys_lock);
+    thread_current()->exec_file = file;
+    file_deny_write(file);
+    lock_release(&filesys_lock);
+    
     success = true;
 
 done:
     /* We arrive here whether the load is successful or not. */
-    file_close(file);
     return success;
 }
 
