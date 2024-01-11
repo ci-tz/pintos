@@ -161,7 +161,11 @@ static void *evict_page()
     /* Update the page table entry. */
     pte->kpage = NULL;
     switch(pte->type) {
-    case BIN:
+    case TEXT:
+        ASSERT(!is_dirty);
+        pte->location = IN_FILESYS;
+        break;
+    case DATA:
         if(is_dirty) {
             pte->swap_index = do_swap_out(&global_swap_table, kpage);
             ASSERT(pte->swap_index != BITMAP_ERROR);

@@ -522,7 +522,12 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
             return false;
         }
 #else
-        struct sup_pte *pte = sup_pte_alloc(upage, writable, BIN, IN_FILESYS);
+        struct sup_pte *pte = NULL;
+        if (writable) {
+            pte = sup_pte_alloc(upage, writable, DATA, IN_FILESYS);
+        } else {
+            pte = sup_pte_alloc(upage, writable, TEXT, IN_FILESYS);
+        }
         if (pte == NULL) {
             return false;
         }
@@ -681,7 +686,14 @@ bool handle_mm_fault(struct sup_pte *pte)
 
     /* Load this page. */
     switch (pte->type) {
-    case BIN:
+    case TEXT:
+        ASSERT(pte->location == IN_FILESYS);
+        lock_acquire(&filesys_lock);
+        file_read_at(pte->file, kpage, pte->read_bytes, pte->offset);
+        lock_release(&filesys_lock);
+        memset(kpage + pte->read_bytes, 0, pte->zero_bytes);
+        break;
+    case DATA:
         ASSERT(pte->location == IN_FILESYS || pte->location == SWAP);
         if (pte->location == IN_FILESYS) {
             lock_acquire(&filesys_lock);
@@ -697,7 +709,7 @@ bool handle_mm_fault(struct sup_pte *pte)
     case STACK:
         ASSERT(pte->location == ZERO || pte->location == SWAP);
         if (pte->location == ZERO) {
-            ; /* Do nothing */
+            memset(kpage, 0, PGSIZE);
         } else if (pte->location == SWAP) {
             ASSERT(pte->swap_index != INVALID_SWAP_INDEX);
             do_swap_in(&global_swap_table, pte->swap_index, kpage);
