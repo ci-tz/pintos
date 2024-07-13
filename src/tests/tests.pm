@@ -24,7 +24,7 @@ for my $prereq_test (@prereq_tests) {
     fail "Prerequisite test $prereq_test failed.\n" if $result[0] ne 'PASS';
 }
 
-
+
 # Generic testing.
 
 sub check_expected {
@@ -228,7 +228,7 @@ sub compare_output {
       if $ignore_user_faults;
     fail "Test output failed to match any acceptable form.\n\n$msg";
 }
-
+
 # File system extraction.
 
 # check_archive (\%CONTENTS)
@@ -580,7 +580,7 @@ sub read_tar {
     close (ARCHIVE);
     return %content;
 }
-
+
 # Utilities.
 
 sub fail {
